@@ -20,11 +20,14 @@ on:
         type: choice
         options:
           - plan
-          - apply
 
 env:
   TF_DIR: terraform/environments/prod
   AWS_REGION: eu-west-1
+
+concurrency:
+  group: terraform-prod-main
+  cancel-in-progress: false
 
 permissions:
   id-token: write
@@ -50,13 +53,13 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
-        run: terraform -chdir=${{ env.TF_DIR }} init
+        run: terraform -chdir=${{ env.TF_DIR }} init -input=false
 
       - name: Terraform Validate
         run: terraform -chdir=${{ env.TF_DIR }} validate
 
       - name: Terraform Plan
-        run: terraform -chdir=${{ env.TF_DIR }} plan -out=tfplan
+        run: terraform -chdir=${{ env.TF_DIR }} plan -input=false -out=tfplan
 
       - name: Upload Plan Artifact
         uses: actions/upload-artifact@v4
@@ -65,7 +68,7 @@ jobs:
           path: ${{ env.TF_DIR }}/tfplan
 
   apply:
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+    if: github.event_name == 'push'
     needs: validate-plan
     runs-on: ubuntu-latest
     environment: prod
@@ -85,7 +88,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
-        run: terraform -chdir=${{ env.TF_DIR }} init
+        run: terraform -chdir=${{ env.TF_DIR }} init -input=false
 
       - name: Terraform Apply
-        run: terraform -chdir=${{ env.TF_DIR }} apply -auto-approve
+        run: terraform -chdir=${{ env.TF_DIR }} apply -input=false -auto-approve

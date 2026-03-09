@@ -83,18 +83,14 @@ Required GitHub secrets:
 
 Use GitHub Actions workflow `Terraform Prod` for controlled infrastructure changes.
 
-1. Run a manual plan:
-   - GitHub -> `Actions` -> `Terraform Prod` -> `Run workflow`
-   - Select `action = plan`
-2. Review plan output and artifacts.
-3. Run apply:
-   - GitHub -> `Actions` -> `Terraform Prod` -> `Run workflow`
-   - Select `action = apply`
-4. Approve the `prod` environment gate when prompted.
+1. Open a pull request for Terraform changes.
+2. PR automatically runs `init`, `validate`, and `plan`.
+3. Merge to `main` after review.
+4. Push to `main` automatically triggers `apply` (approval-gated by `prod` environment if enabled).
 
 Recommended:
 
-- Keep `apply` limited to `main` branch changes.
+- Keep direct local `terraform apply` disabled in team process.
 - Use pull requests for all Terraform edits so plan runs are visible before apply.
 
 ## Future roadmap
