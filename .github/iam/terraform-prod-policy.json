@@ -50,7 +50,6 @@
         "ec2:RevokeSecurityGroupEgress",
         "ec2:CreateTags",
         "ec2:DeleteTags",
-
         "eks:CreateCluster",
         "eks:DeleteCluster",
         "eks:UpdateClusterConfig",
@@ -61,17 +60,14 @@
         "eks:UpdateNodegroupVersion",
         "eks:TagResource",
         "eks:UntagResource",
-
         "iam:CreateRole",
         "iam:DeleteRole",
         "iam:TagRole",
         "iam:UntagRole",
-        "iam:PassRole",
         "iam:AttachRolePolicy",
         "iam:DetachRolePolicy",
         "iam:PutRolePolicy",
         "iam:DeleteRolePolicy",
-
         "rds:CreateDBSubnetGroup",
         "rds:DeleteDBSubnetGroup",
         "rds:ModifyDBSubnetGroup",
@@ -80,7 +76,6 @@
         "rds:CreateDBInstance",
         "rds:ModifyDBInstance",
         "rds:DeleteDBInstance",
-
         "secretsmanager:CreateSecret",
         "secretsmanager:UpdateSecret",
         "secretsmanager:DeleteSecret",
@@ -89,6 +84,20 @@
         "secretsmanager:UntagResource"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "AllowPassOnlyEksRolesToEksService",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::211125458668:role/openproject-prod-eks-cluster-role",
+        "arn:aws:iam::211125458668:role/openproject-prod-eks-node-role"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "eks.amazonaws.com"
+        }
+      }
     }
   ]
 }
