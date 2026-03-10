@@ -87,7 +87,9 @@ variable "eks_node_group_name" {
 variable "eks_node_instance_types" {
   description = "Instance types for EKS managed node group"
   type        = list(string)
-  default     = ["t3.small"]
+  # Free-tier compatible for now.
+  # Preferred after free-tier: ["t3.medium"]
+  default = ["t3.micro"]
 }
 
 variable "eks_node_capacity_type" {
@@ -149,7 +151,9 @@ variable "rds_master_password" {
 variable "rds_instance_class" {
   description = "RDS instance class"
   type        = string
-  default     = "db.t3.medium"
+  # Free-tier compatible for now.
+  # Preferred after free-tier: "db.t3.medium"
+  default = "db.t3.micro"
 }
 
 variable "rds_allocated_storage" {
@@ -173,7 +177,9 @@ variable "rds_engine_version" {
 variable "rds_backup_retention_period" {
   description = "RDS backup retention period in days"
   type        = number
-  default     = 7
+  # Free-tier compatible for now.
+  # Preferred after free-tier: 7
+  default = 1
 }
 
 variable "rds_multi_az" {
