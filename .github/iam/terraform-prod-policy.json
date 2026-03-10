@@ -84,6 +84,7 @@
         "secretsmanager:UpdateSecret",
         "secretsmanager:DeleteSecret",
         "secretsmanager:PutSecretValue",
+        "secretsmanager:GetSecretValue",
         "secretsmanager:TagResource",
         "secretsmanager:UntagResource",
         "s3:GetObject",
