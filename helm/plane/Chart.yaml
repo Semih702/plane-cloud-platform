@@ -1,0 +1,12 @@
+apiVersion: v2
+name: plane-wrapper
+description: Wrapper Helm chart for deploying Plane
+type: application
+
+version: 0.1.0
+appVersion: "1.0.0"
+
+dependencies:
+  - name: plane-ce
+    repository: https://helm.plane.so
+    version: "*"

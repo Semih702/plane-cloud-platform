@@ -1,3 +1,0 @@
-# Base values shared across environments.
-# Environment-specific overrides live under values/*.yaml
-openproject: {}

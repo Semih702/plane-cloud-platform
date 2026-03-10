@@ -1,0 +1,13 @@
+# Base values shared across environments.
+# Environment-specific overrides live under values/*.yaml
+storageClass:
+  create: true
+  name: gp3-csi
+  defaultClass: false
+  reclaimPolicy: Delete
+  volumeBindingMode: WaitForFirstConsumer
+  allowVolumeExpansion: true
+  type: gp3
+  fsType: ext4
+
+plane-ce: {}

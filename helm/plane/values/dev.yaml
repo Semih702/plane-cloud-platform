@@ -1,0 +1,56 @@
+plane-ce:
+  postgres:
+    storageClass: gp3-csi
+
+  redis:
+    storageClass: gp3-csi
+
+  rabbitmq:
+    storageClass: gp3-csi
+
+  minio:
+    local_setup: false
+
+  env:
+    docstore_bucket: "plane-dev-uploads"
+    aws_access_key: "CHANGE_ME"
+    aws_secret_access_key: "CHANGE_ME"
+    aws_region: "eu-west-1"
+    aws_s3_endpoint_url: ""
+
+  ingress:
+    enabled: true
+    appHost: plane-dev.example.com
+    ingressClass: nginx
+
+  ssl:
+    createIssuer: false
+    generateCerts: false
+
+  web:
+    replicas: 1
+    cpuRequest: 100m
+    memoryRequest: 128Mi
+    cpuLimit: 500m
+    memoryLimit: 512Mi
+
+  api:
+    replicas: 1
+    cpuRequest: 100m
+    memoryRequest: 128Mi
+    cpuLimit: 500m
+    memoryLimit: 512Mi
+
+  worker:
+    replicas: 1
+    cpuRequest: 100m
+    memoryRequest: 128Mi
+    cpuLimit: 500m
+    memoryLimit: 512Mi
+
+  beatworker:
+    replicas: 1
+    cpuRequest: 100m
+    memoryRequest: 128Mi
+    cpuLimit: 500m
+    memoryLimit: 512Mi

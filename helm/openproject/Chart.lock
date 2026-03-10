@@ -1,6 +1,0 @@
-dependencies:
-- name: openproject
-  repository: https://charts.openproject.org
-  version: 13.3.0
-digest: sha256:c52d4cec820ef6d42055567ac9347212ca87f1e87eacf094d8de8f3687f46aee
-generated: "2026-03-09T19:42:20.5553701+03:00"

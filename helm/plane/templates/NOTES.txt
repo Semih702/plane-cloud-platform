@@ -1,1 +1,2 @@
 # This wrapper chart currently delegates configuration via values files.
+# Plane-specific manifests or dependencies are added in later phases.

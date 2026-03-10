@@ -1,0 +1,62 @@
+name: Helm Plane Dev
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'helm/**'
+      - '.github/workflows/helm-plane-dev.yml'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: eu-west-1
+  EKS_CLUSTER_NAME: openproject-prod-eks
+  HELM_RELEASE_NAME: plane-dev
+  K8S_NAMESPACE: plane-dev
+  HELM_CHART_DIR: helm/plane
+  HELM_VALUES_FILE: helm/plane/values/dev.yaml
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure kubectl context
+        run: aws eks update-kubeconfig --name "${{ env.EKS_CLUSTER_NAME }}" --region "${{ env.AWS_REGION }}"
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Helm dependency update
+        run: helm dependency update "${{ env.HELM_CHART_DIR }}"
+
+      - name: Ensure namespace exists
+        run: kubectl get namespace "${{ env.K8S_NAMESPACE }}" || kubectl create namespace "${{ env.K8S_NAMESPACE }}"
+
+      - name: Helm upgrade/install
+        run: |
+          helm upgrade --install "${{ env.HELM_RELEASE_NAME }}" "${{ env.HELM_CHART_DIR }}" \
+            --namespace "${{ env.K8S_NAMESPACE }}" \
+            --values "${{ env.HELM_VALUES_FILE }}" \
+            --wait \
+            --timeout 15m
+
+      - name: Verify rollout
+        run: |
+          kubectl get pods -n "${{ env.K8S_NAMESPACE }}"
+          kubectl get svc -n "${{ env.K8S_NAMESPACE }}"
+          kubectl get ingress -n "${{ env.K8S_NAMESPACE }}" || true

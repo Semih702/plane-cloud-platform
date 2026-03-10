@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - 'terraform/**'
+      - 'helm/**'
       - '.github/workflows/terraform-prod.yml'
   push:
     branches:
       - main
     paths:
       - 'terraform/**'
+      - 'helm/**'
       - '.github/workflows/terraform-prod.yml'
   workflow_dispatch:
     inputs:
@@ -20,10 +22,16 @@ on:
         type: choice
         options:
           - plan
+          - apply
 
 env:
   TF_DIR: terraform/environments/prod
   AWS_REGION: eu-west-1
+  EKS_CLUSTER_NAME: openproject-prod-eks
+  HELM_RELEASE_NAME: plane-dev
+  K8S_NAMESPACE: plane-dev
+  HELM_CHART_DIR: helm/plane
+  HELM_VALUES_FILE: helm/plane/values/dev.yaml
 
 concurrency:
   group: terraform-prod-main
@@ -35,7 +43,7 @@ permissions:
 
 jobs:
   validate-plan:
-    if: github.event_name == 'pull_request' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan')
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -71,6 +79,18 @@ jobs:
       - name: Terraform Plan
         run: terraform -chdir=${{ env.TF_DIR }} plan -input=false -out=tfplan
 
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Helm Dependency Update
+        run: helm dependency update "${{ env.HELM_CHART_DIR }}"
+
+      - name: Helm Lint
+        run: helm lint "${{ env.HELM_CHART_DIR }}" --values "${{ env.HELM_VALUES_FILE }}"
+
+      - name: Helm Template Validate
+        run: helm template "${{ env.HELM_RELEASE_NAME }}" "${{ env.HELM_CHART_DIR }}" --namespace "${{ env.K8S_NAMESPACE }}" --values "${{ env.HELM_VALUES_FILE }}" > /dev/null
+
       - name: Upload Plan Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -78,7 +98,7 @@ jobs:
           path: ${{ env.TF_DIR }}/tfplan
 
   apply:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
     needs: validate-plan
     runs-on: ubuntu-latest
     environment: prod
@@ -102,3 +122,24 @@ jobs:
 
       - name: Terraform Apply
         run: terraform -chdir=${{ env.TF_DIR }} apply -input=false -auto-approve
+
+      - name: Configure kubectl context
+        run: aws eks update-kubeconfig --name "${{ env.EKS_CLUSTER_NAME }}" --region "${{ env.AWS_REGION }}"
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Helm Dependency Update
+        run: helm dependency update "${{ env.HELM_CHART_DIR }}"
+
+      - name: Ensure namespace exists
+        run: kubectl get namespace "${{ env.K8S_NAMESPACE }}" || kubectl create namespace "${{ env.K8S_NAMESPACE }}"
+
+      - name: Helm Upgrade/Install
+        run: |
+          helm upgrade --install "${{ env.HELM_RELEASE_NAME }}" "${{ env.HELM_CHART_DIR }}" \
+            --namespace "${{ env.K8S_NAMESPACE }}" \
+            --values "${{ env.HELM_VALUES_FILE }}" \
+            --atomic \
+            --wait \
+            --timeout 20m
