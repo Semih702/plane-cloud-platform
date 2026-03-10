@@ -1,4 +1,7 @@
 plane-ce:
+  external_secrets:
+    doc_store_existingSecret: plane-dev-doc-store-secrets
+
   postgres:
     storageClass: gp3-csi
 
@@ -13,8 +16,6 @@ plane-ce:
 
   env:
     docstore_bucket: "plane-dev-uploads"
-    aws_access_key: "CHANGE_ME"
-    aws_secret_access_key: "CHANGE_ME"
     aws_region: "eu-west-1"
     aws_s3_endpoint_url: ""
 

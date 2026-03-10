@@ -79,7 +79,8 @@ The wrapper chart is located at `helm/plane` and environment overrides start wit
 - EKS now uses managed `aws-ebs-csi-driver` addon for dynamic PVC provisioning.
 - Wrapper chart creates `gp3-csi` StorageClass and Plane stateful components use it explicitly.
 - MinIO is disabled in `helm/plane/values/dev.yaml`; Plane document storage is configured for direct S3 usage.
-- Replace placeholder S3 credentials in `helm/plane/values/dev.yaml` with real secrets before production use.
+- S3 credentials are injected at deploy time from GitHub Actions secrets into Kubernetes Secret `plane-dev-doc-store-secrets`.
+- No S3 access key is stored in repository values files.
 
 ## GitHub CI/CD (OIDC)
 
@@ -99,6 +100,9 @@ Behavior:
 Required GitHub secrets:
 
 - `AWS_GITHUB_OIDC_ROLE_ARN`
+- `PLANE_S3_ACCESS_KEY_ID`
+- `PLANE_S3_SECRET_ACCESS_KEY`
+- `PLANE_S3_ENDPOINT_URL` (optional for AWS S3; can be empty)
 
 ## Unified Terraform + Helm Workflow
 
@@ -200,6 +204,8 @@ Use this checklist to bring up the project from scratch in a new AWS account.
 
 1. Create GitHub repository secrets
    - Add `AWS_GITHUB_OIDC_ROLE_ARN` in repository secrets.
+   - Add `PLANE_S3_ACCESS_KEY_ID` and `PLANE_S3_SECRET_ACCESS_KEY`.
+   - Add optional `PLANE_S3_ENDPOINT_URL` (leave empty for AWS S3).
 
 2. Configure AWS IAM/OIDC once (manual)
    - Create GitHub OIDC identity provider (`token.actions.githubusercontent.com`) if missing.
@@ -227,6 +233,7 @@ Use this checklist to bring up the project from scratch in a new AWS account.
    - Pipeline order:
      - Terraform init/validate/plan
      - Terraform apply
+     - Create/update Kubernetes doc-store secret from GitHub secrets
      - Helm upgrade/install for Plane (`--atomic --wait`)
 
 5. Verify cluster and app

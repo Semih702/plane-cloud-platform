@@ -34,6 +34,8 @@ env:
   K8S_NAMESPACE: plane-dev
   HELM_CHART_DIR: helm/plane
   HELM_VALUES_FILE: helm/plane/values/dev.yaml
+  PLANE_DOCSTORE_SECRET_NAME: plane-dev-doc-store-secrets
+  PLANE_S3_BUCKET: plane-dev-uploads
 
 concurrency:
   group: terraform-prod-main
@@ -144,6 +146,33 @@ jobs:
 
       - name: Ensure namespace exists
         run: kubectl get namespace "${{ env.K8S_NAMESPACE }}" || kubectl create namespace "${{ env.K8S_NAMESPACE }}"
+
+      - name: Validate Plane S3 Secrets
+        env:
+          PLANE_S3_ACCESS_KEY_ID: ${{ secrets.PLANE_S3_ACCESS_KEY_ID }}
+          PLANE_S3_SECRET_ACCESS_KEY: ${{ secrets.PLANE_S3_SECRET_ACCESS_KEY }}
+          PLANE_S3_ENDPOINT_URL: ${{ secrets.PLANE_S3_ENDPOINT_URL }}
+        run: |
+          set -euo pipefail
+          test -n "${PLANE_S3_ACCESS_KEY_ID}"
+          test -n "${PLANE_S3_SECRET_ACCESS_KEY}"
+
+      - name: Create/Update Plane Doc Store Secret
+        env:
+          PLANE_S3_ACCESS_KEY_ID: ${{ secrets.PLANE_S3_ACCESS_KEY_ID }}
+          PLANE_S3_SECRET_ACCESS_KEY: ${{ secrets.PLANE_S3_SECRET_ACCESS_KEY }}
+          PLANE_S3_ENDPOINT_URL: ${{ secrets.PLANE_S3_ENDPOINT_URL }}
+        run: |
+          kubectl create secret generic "${{ env.PLANE_DOCSTORE_SECRET_NAME }}" \
+            -n "${{ env.K8S_NAMESPACE }}" \
+            --from-literal=FILE_SIZE_LIMIT=5242880 \
+            --from-literal=AWS_S3_BUCKET_NAME="${{ env.PLANE_S3_BUCKET }}" \
+            --from-literal=USE_MINIO=0 \
+            --from-literal=AWS_ACCESS_KEY_ID="${PLANE_S3_ACCESS_KEY_ID}" \
+            --from-literal=AWS_SECRET_ACCESS_KEY="${PLANE_S3_SECRET_ACCESS_KEY}" \
+            --from-literal=AWS_S3_ENDPOINT_URL="${PLANE_S3_ENDPOINT_URL}" \
+            --from-literal=AWS_REGION="${{ env.AWS_REGION }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Helm Upgrade/Install
         run: |
