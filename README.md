@@ -193,3 +193,48 @@ Planned additions include:
 
 - Use the correct AWS profile/account before running Terraform.
 - Run `terraform plan` before `terraform apply` for safer changes.
+
+## Zero-to-Deploy Guide
+
+Use this checklist to bring up the project from scratch in a new AWS account.
+
+1. Create GitHub repository secrets
+   - Add `AWS_GITHUB_OIDC_ROLE_ARN` in repository secrets.
+
+2. Configure AWS IAM/OIDC once (manual)
+   - Create GitHub OIDC identity provider (`token.actions.githubusercontent.com`) if missing.
+   - Create role `github-actions-terraform-prod` with trust policy for your repo/branch.
+   - Attach inline policy from `.github/iam/terraform-prod-policy.json`.
+   - Sync policy with:
+     ```powershell
+     aws iam put-role-policy `
+       --role-name github-actions-terraform-prod `
+       --policy-name terraform-prod-policy `
+       --policy-document file://.github/iam/terraform-prod-policy.json `
+       --profile personal
+     ```
+
+3. Run bootstrap once (manual trigger in GitHub Actions)
+   - Open workflow `Terraform Bootstrap`.
+   - Run with `action=apply`.
+   - This creates:
+     - `openproject-cloud-platform-tfstate-<account-id>` (S3 backend bucket)
+     - `openproject-cloud-platform-tf-locks` (DynamoDB lock table)
+
+4. Run production workflow
+   - Open workflow `Terraform Prod`.
+   - Run `action=apply` (or push to `main` after PR flow).
+   - Pipeline order:
+     - Terraform init/validate/plan
+     - Terraform apply
+     - Helm upgrade/install for Plane (`--atomic --wait`)
+
+5. Verify cluster and app
+   - `kubectl get pods -n plane-dev`
+   - `kubectl get jobs -n plane-dev`
+   - `kubectl get pvc -n plane-dev`
+   - Ensure migration job is `Complete`, core pods are `Running/Ready`, PVCs are `Bound`.
+
+6. Post-setup hardening (recommended)
+   - Move S3 credentials out of `helm/plane/values/dev.yaml`.
+   - Use Secrets Manager + Kubernetes secret sync (or equivalent).
