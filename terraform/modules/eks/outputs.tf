@@ -32,3 +32,8 @@ output "oidc_issuer_hostpath" {
   description = "OIDC issuer hostpath (without https://)"
   value       = local.oidc_issuer_hostpath
 }
+
+output "aws_load_balancer_controller_irsa_role_arn" {
+  description = "IRSA role ARN for aws-load-balancer-controller"
+  value       = var.enable_aws_load_balancer_controller ? aws_iam_role.aws_load_balancer_controller_irsa[0].arn : null
+}

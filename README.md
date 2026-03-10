@@ -85,7 +85,7 @@ The wrapper chart is located at `helm/plane` and environment overrides start wit
 - Wrapper chart creates `gp3-csi` StorageClass and Plane stateful components use it explicitly.
 - MinIO is disabled in `helm/plane/values/dev.yaml`; Plane document storage is configured for direct S3 usage.
 - Plane workloads use IRSA (IAM Role for Service Account) for S3 access; no static S3 access key is required.
-- Deploy pipeline creates/updates Kubernetes Secret `plane-dev-doc-store-secrets` with non-sensitive doc-store settings (bucket/region/endpoint).
+- Wrapper chart creates Kubernetes Secret `plane-dev-doc-store-secrets` during `helm upgrade/install`, so app deploy is self-contained.
 
 ## GitHub CI/CD (OIDC)
 
@@ -116,6 +116,19 @@ Deployment is handled in a single pipeline:
 - Main push or manual `apply`: Terraform apply first, then Helm upgrade with `--atomic --wait`
 - Target cluster: `openproject-prod-eks`
 - Target namespace/release: `plane-dev`
+
+## Plane ALB Routing
+
+Plane path routing is defined by the upstream `plane-ce` ingress template and is applied through this wrapper chart.
+
+- `/` -> `plane-dev-web:3000`
+- `/api` -> `plane-dev-api:8000`
+- `/auth` -> `plane-dev-api:8000`
+- `/live/` -> `plane-dev-live:3000`
+- `/spaces` -> `plane-dev-space:3000`
+- `/god-mode` -> `plane-dev-admin:3000`
+
+`aws-load-balancer-controller` is installed by the production workflow and ingress class is set to `alb` in `helm/plane/values/dev.yaml`.
 
 ## Bootstrap First (Best Practice)
 
@@ -260,8 +273,7 @@ Use this checklist to bring up the project from scratch in a new AWS account.
    - Pipeline order:
      - Terraform init/validate/plan
      - Terraform apply
-     - Create/update Kubernetes doc-store secret from Terraform outputs (+ optional endpoint secret)
-     - Helm upgrade/install for Plane (`--atomic --wait`)
+     - Helm upgrade/install for Plane (`--atomic --wait`) with Terraform outputs injected as Helm values
 
 5. Verify cluster and app
    - `kubectl get pods -n plane-dev`
@@ -272,3 +284,35 @@ Use this checklist to bring up the project from scratch in a new AWS account.
 6. Post-setup hardening (recommended)
    - Restrict Plane IRSA role policy to exact bucket/prefix needs.
    - Add secret rotation and operational runbook for S3/DB recovery.
+
+## Next Steps
+
+To move this repository closer to production-grade best practices, implement the following in order:
+
+1. IAM least-privilege refinement
+   - Reduce broad permissions in `.github/iam/terraform-prod-policy.json`.
+   - Scope S3 and IAM actions to exact required resources and operations.
+
+2. Secret management hardening
+   - Move sensitive runtime secrets to AWS Secrets Manager.
+   - Add External Secrets Operator (ESO) so Kubernetes secrets are synced automatically.
+
+3. Managed data services for production
+   - Keep PostgreSQL on Amazon RDS.
+   - Plan migration from in-cluster Redis/RabbitMQ to managed alternatives (for example ElastiCache and Amazon MQ) based on workload needs.
+
+4. Ingress and TLS hardening
+   - Use AWS Load Balancer Controller with ACM certificates.
+   - Add ExternalDNS and tighten network/security group rules.
+
+5. Observability and alerting
+   - Add metrics/logging dashboards and alerts (CloudWatch and/or Prometheus/Grafana stack).
+   - Track pod health, node pressure, error rates, and database availability.
+
+6. Release safety controls
+   - Enforce main branch protection with required checks and PR review.
+   - Add post-deploy smoke tests in CI/CD.
+
+7. Disaster recovery readiness
+   - Document backup and restore runbooks for RDS and S3.
+   - Run periodic recovery drills and validate RTO/RPO targets.

@@ -34,7 +34,6 @@ env:
   K8S_NAMESPACE: plane-dev
   HELM_CHART_DIR: helm/plane
   HELM_VALUES_FILE: helm/plane/values/dev.yaml
-  PLANE_DOCSTORE_SECRET_NAME: plane-dev-doc-store-secrets
 
 concurrency:
   group: terraform-prod-main
@@ -149,27 +148,35 @@ jobs:
       - name: Read Terraform Outputs
         id: tf_outputs
         run: |
+          echo "vpc_id=$(terraform -chdir=${{ env.TF_DIR }} output -raw vpc_id)" >> "$GITHUB_OUTPUT"
           echo "plane_docstore_bucket_name=$(terraform -chdir=${{ env.TF_DIR }} output -raw plane_docstore_bucket_name)" >> "$GITHUB_OUTPUT"
           echo "plane_irsa_role_arn=$(terraform -chdir=${{ env.TF_DIR }} output -raw plane_irsa_role_arn)" >> "$GITHUB_OUTPUT"
+          echo "aws_load_balancer_controller_irsa_role_arn=$(terraform -chdir=${{ env.TF_DIR }} output -raw eks_aws_load_balancer_controller_irsa_role_arn)" >> "$GITHUB_OUTPUT"
 
-      - name: Create/Update Plane Doc Store Secret
-        env:
-          PLANE_S3_ENDPOINT_URL: ${{ secrets.PLANE_S3_ENDPOINT_URL }}
+      - name: Install/Upgrade AWS Load Balancer Controller
         run: |
-          kubectl create secret generic "${{ env.PLANE_DOCSTORE_SECRET_NAME }}" \
-            -n "${{ env.K8S_NAMESPACE }}" \
-            --from-literal=FILE_SIZE_LIMIT=5242880 \
-            --from-literal=AWS_S3_BUCKET_NAME="${{ steps.tf_outputs.outputs.plane_docstore_bucket_name }}" \
-            --from-literal=USE_MINIO=0 \
-            --from-literal=AWS_S3_ENDPOINT_URL="${PLANE_S3_ENDPOINT_URL}" \
-            --from-literal=AWS_REGION="${{ env.AWS_REGION }}" \
-            --dry-run=client -o yaml | kubectl apply -f -
+          helm repo add eks https://aws.github.io/eks-charts
+          helm repo update
+          helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+            --namespace kube-system \
+            --set clusterName="${{ env.EKS_CLUSTER_NAME }}" \
+            --set serviceAccount.create=true \
+            --set serviceAccount.name=aws-load-balancer-controller \
+            --set-string serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn="${{ steps.tf_outputs.outputs.aws_load_balancer_controller_irsa_role_arn }}" \
+            --set region="${{ env.AWS_REGION }}" \
+            --set vpcId="${{ steps.tf_outputs.outputs.vpc_id }}" \
+            --wait \
+            --timeout 10m
+          kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --timeout=5m
 
       - name: Helm Upgrade/Install
         run: |
           helm upgrade --install "${{ env.HELM_RELEASE_NAME }}" "${{ env.HELM_CHART_DIR }}" \
             --namespace "${{ env.K8S_NAMESPACE }}" \
             --values "${{ env.HELM_VALUES_FILE }}" \
+            --set-string plane-ce.env.docstore_bucket="${{ steps.tf_outputs.outputs.plane_docstore_bucket_name }}" \
+            --set-string plane-ce.env.aws_region="${{ env.AWS_REGION }}" \
+            --set-string plane-ce.env.aws_s3_endpoint_url="${{ secrets.PLANE_S3_ENDPOINT_URL }}" \
             --atomic \
             --wait \
             --timeout 20m

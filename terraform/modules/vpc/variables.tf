@@ -29,6 +29,12 @@ variable "private_subnet_cidrs" {
   type        = list(string)
 }
 
+variable "kubernetes_cluster_name" {
+  description = "Optional EKS cluster name for subnet discovery tags"
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Common tags applied to all resources"
   type        = map(string)

@@ -7,11 +7,12 @@ locals {
 module "vpc" {
   source = "../../modules/vpc"
 
-  name                 = "${var.project_name}-${var.environment}-vpc"
-  vpc_cidr             = var.vpc_cidr
-  az_count             = var.az_count
-  public_subnet_cidrs  = var.public_subnet_cidrs
-  private_subnet_cidrs = var.private_subnet_cidrs
+  name                    = "${var.project_name}-${var.environment}-vpc"
+  vpc_cidr                = var.vpc_cidr
+  az_count                = var.az_count
+  public_subnet_cidrs     = var.public_subnet_cidrs
+  private_subnet_cidrs    = var.private_subnet_cidrs
+  kubernetes_cluster_name = "${var.project_name}-${var.environment}-eks"
 
   tags = {
     Project     = var.project_name
@@ -23,23 +24,26 @@ module "vpc" {
 module "eks" {
   source = "../../modules/eks"
 
-  cluster_name                    = "${var.project_name}-${var.environment}-eks"
-  cluster_version                 = var.eks_cluster_version
-  subnet_ids                      = module.vpc.private_subnet_ids
-  endpoint_public_access          = var.eks_endpoint_public_access
-  endpoint_private_access         = var.eks_endpoint_private_access
-  endpoint_public_access_cidrs    = var.eks_endpoint_public_access_cidrs
-  bootstrap_cluster_creator_admin = var.eks_bootstrap_cluster_creator_admin
-  cluster_admin_principal_arns    = var.eks_cluster_admin_principal_arns
-  node_group_name                 = var.eks_node_group_name
-  node_subnet_ids                 = module.vpc.private_subnet_ids
-  node_instance_types             = var.eks_node_instance_types
-  node_capacity_type              = var.eks_node_capacity_type
-  node_desired_size               = var.eks_node_desired_size
-  node_min_size                   = var.eks_node_min_size
-  node_max_size                   = var.eks_node_max_size
-  node_disk_size                  = var.eks_node_disk_size
-  node_update_max_unavailable     = var.eks_node_update_max_unavailable
+  cluster_name                                      = "${var.project_name}-${var.environment}-eks"
+  cluster_version                                   = var.eks_cluster_version
+  subnet_ids                                        = module.vpc.private_subnet_ids
+  endpoint_public_access                            = var.eks_endpoint_public_access
+  endpoint_private_access                           = var.eks_endpoint_private_access
+  endpoint_public_access_cidrs                      = var.eks_endpoint_public_access_cidrs
+  bootstrap_cluster_creator_admin                   = var.eks_bootstrap_cluster_creator_admin
+  cluster_admin_principal_arns                      = var.eks_cluster_admin_principal_arns
+  node_group_name                                   = var.eks_node_group_name
+  node_subnet_ids                                   = module.vpc.private_subnet_ids
+  node_instance_types                               = var.eks_node_instance_types
+  node_capacity_type                                = var.eks_node_capacity_type
+  node_desired_size                                 = var.eks_node_desired_size
+  node_min_size                                     = var.eks_node_min_size
+  node_max_size                                     = var.eks_node_max_size
+  node_disk_size                                    = var.eks_node_disk_size
+  node_update_max_unavailable                       = var.eks_node_update_max_unavailable
+  enable_aws_load_balancer_controller               = var.eks_enable_aws_load_balancer_controller
+  aws_load_balancer_controller_namespace            = var.eks_aws_load_balancer_controller_namespace
+  aws_load_balancer_controller_service_account_name = var.eks_aws_load_balancer_controller_service_account_name
 
   tags = {
     Project     = var.project_name

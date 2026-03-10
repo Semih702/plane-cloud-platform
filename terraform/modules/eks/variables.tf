@@ -107,3 +107,21 @@ variable "cluster_admin_principal_arns" {
   type        = list(string)
   default     = []
 }
+
+variable "enable_aws_load_balancer_controller" {
+  description = "Create IRSA role and policy for AWS Load Balancer Controller"
+  type        = bool
+  default     = true
+}
+
+variable "aws_load_balancer_controller_namespace" {
+  description = "Namespace for aws-load-balancer-controller service account"
+  type        = string
+  default     = "kube-system"
+}
+
+variable "aws_load_balancer_controller_service_account_name" {
+  description = "Service account name for aws-load-balancer-controller"
+  type        = string
+  default     = "aws-load-balancer-controller"
+}

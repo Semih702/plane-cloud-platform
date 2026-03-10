@@ -134,6 +134,24 @@ variable "eks_node_update_max_unavailable" {
   default     = 1
 }
 
+variable "eks_enable_aws_load_balancer_controller" {
+  description = "Enable AWS Load Balancer Controller IRSA role provisioning"
+  type        = bool
+  default     = true
+}
+
+variable "eks_aws_load_balancer_controller_namespace" {
+  description = "Namespace for aws-load-balancer-controller service account"
+  type        = string
+  default     = "kube-system"
+}
+
+variable "eks_aws_load_balancer_controller_service_account_name" {
+  description = "Service account name used by aws-load-balancer-controller"
+  type        = string
+  default     = "aws-load-balancer-controller"
+}
+
 variable "rds_db_name" {
   description = "OpenProject PostgreSQL database name"
   type        = string

@@ -48,6 +48,11 @@ output "eks_node_group_name" {
   value       = module.eks.node_group_name
 }
 
+output "eks_aws_load_balancer_controller_irsa_role_arn" {
+  description = "IRSA role ARN for aws-load-balancer-controller"
+  value       = module.eks.aws_load_balancer_controller_irsa_role_arn
+}
+
 output "rds_instance_identifier" {
   description = "RDS PostgreSQL instance identifier"
   value       = module.rds_postgres.db_instance_identifier

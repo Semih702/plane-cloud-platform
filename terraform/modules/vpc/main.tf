@@ -32,6 +32,10 @@ locals {
   base_tags = merge(var.tags, {
     Name = var.name
   })
+
+  kubernetes_cluster_tag = var.kubernetes_cluster_name != "" ? {
+    "kubernetes.io/cluster/${var.kubernetes_cluster_name}" = "shared"
+  } : {}
 }
 
 resource "aws_vpc" "this" {
@@ -61,9 +65,10 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 
   tags = merge(local.base_tags, {
-    Name = "${var.name}-${each.key}-public"
-    Tier = "public"
-  })
+    Name                     = "${var.name}-${each.key}-public"
+    Tier                     = "public"
+    "kubernetes.io/role/elb" = "1"
+  }, local.kubernetes_cluster_tag)
 }
 
 resource "aws_subnet" "private" {
@@ -75,9 +80,10 @@ resource "aws_subnet" "private" {
   map_public_ip_on_launch = false
 
   tags = merge(local.base_tags, {
-    Name = "${var.name}-${each.key}-private"
-    Tier = "private"
-  })
+    Name                              = "${var.name}-${each.key}-private"
+    Tier                              = "private"
+    "kubernetes.io/role/internal-elb" = "1"
+  }, local.kubernetes_cluster_tag)
 }
 
 resource "aws_eip" "nat" {

@@ -22,7 +22,11 @@ plane-ce:
   ingress:
     enabled: true
     appHost: plane-dev.example.com
-    ingressClass: nginx
+    ingressClass: alb
+    ingress_annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
 
   ssl:
     createIssuer: false

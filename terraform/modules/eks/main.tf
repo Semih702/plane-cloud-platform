@@ -124,6 +124,54 @@ resource "aws_iam_role_policy_attachment" "ebs_csi_irsa_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
 }
 
+resource "aws_iam_role" "aws_load_balancer_controller_irsa" {
+  count = var.enable_aws_load_balancer_controller ? 1 : 0
+
+  name = "${var.cluster_name}-aws-lbc-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Federated = aws_iam_openid_connect_provider.eks.arn
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Condition = {
+          StringEquals = {
+            "${local.oidc_issuer_hostpath}:aud" = "sts.amazonaws.com"
+            "${local.oidc_issuer_hostpath}:sub" = "system:serviceaccount:${var.aws_load_balancer_controller_namespace}:${var.aws_load_balancer_controller_service_account_name}"
+          }
+        }
+      }
+    ]
+  })
+
+  tags = merge(var.tags, {
+    Name = "${var.cluster_name}-aws-lbc-role"
+  })
+}
+
+resource "aws_iam_policy" "aws_load_balancer_controller" {
+  count = var.enable_aws_load_balancer_controller ? 1 : 0
+
+  name        = "${var.cluster_name}-aws-lbc-policy"
+  description = "IAM policy for AWS Load Balancer Controller"
+  policy      = file("${path.module}/aws-load-balancer-controller-iam-policy.json")
+
+  tags = merge(var.tags, {
+    Name = "${var.cluster_name}-aws-lbc-policy"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "aws_load_balancer_controller_policy" {
+  count = var.enable_aws_load_balancer_controller ? 1 : 0
+
+  role       = aws_iam_role.aws_load_balancer_controller_irsa[0].name
+  policy_arn = aws_iam_policy.aws_load_balancer_controller[0].arn
+}
+
 resource "aws_eks_cluster" "this" {
   name     = var.cluster_name
   role_arn = aws_iam_role.cluster.arn
