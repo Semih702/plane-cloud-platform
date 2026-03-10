@@ -34,6 +34,7 @@ env:
   K8S_NAMESPACE: plane-dev
   HELM_CHART_DIR: helm/plane
   HELM_VALUES_FILE: helm/plane/values/dev.yaml
+  PLANE_DOCSTORE_SECRET_NAME: plane-dev-doc-store-secrets
 
 concurrency:
   group: terraform-prod-main
@@ -168,6 +169,20 @@ jobs:
             --wait \
             --timeout 10m
           kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --timeout=5m
+
+      - name: Adopt Existing Plane Doc Store Secret (if present)
+        run: |
+          if kubectl get secret "${{ env.PLANE_DOCSTORE_SECRET_NAME }}" -n "${{ env.K8S_NAMESPACE }}" >/dev/null 2>&1; then
+            kubectl label secret "${{ env.PLANE_DOCSTORE_SECRET_NAME }}" \
+              -n "${{ env.K8S_NAMESPACE }}" \
+              app.kubernetes.io/managed-by=Helm \
+              --overwrite
+            kubectl annotate secret "${{ env.PLANE_DOCSTORE_SECRET_NAME }}" \
+              -n "${{ env.K8S_NAMESPACE }}" \
+              meta.helm.sh/release-name="${{ env.HELM_RELEASE_NAME }}" \
+              meta.helm.sh/release-namespace="${{ env.K8S_NAMESPACE }}" \
+              --overwrite
+          fi
 
       - name: Helm Upgrade/Install
         run: |
