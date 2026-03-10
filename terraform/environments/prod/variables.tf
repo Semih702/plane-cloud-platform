@@ -87,9 +87,9 @@ variable "eks_node_group_name" {
 variable "eks_node_instance_types" {
   description = "Instance types for EKS managed node group"
   type        = list(string)
-  # Free-tier compatible for now.
+  # Budget-compatible option when t3.medium is not available.
   # Preferred after free-tier: ["t3.medium"]
-  default = ["t3.micro"]
+  default = ["t3.small"]
 }
 
 variable "eks_node_capacity_type" {
@@ -101,19 +101,19 @@ variable "eks_node_capacity_type" {
 variable "eks_node_desired_size" {
   description = "Desired node count for EKS managed node group"
   type        = number
-  default     = 2
+  default     = 3
 }
 
 variable "eks_node_min_size" {
   description = "Minimum node count for EKS managed node group"
   type        = number
-  default     = 2
+  default     = 3
 }
 
 variable "eks_node_max_size" {
   description = "Maximum node count for EKS managed node group"
   type        = number
-  default     = 3
+  default     = 4
 }
 
 variable "eks_node_disk_size" {
