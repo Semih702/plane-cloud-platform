@@ -71,6 +71,13 @@
         "iam:DeleteRole",
         "iam:TagRole",
         "iam:UntagRole",
+        "iam:CreateOpenIDConnectProvider",
+        "iam:DeleteOpenIDConnectProvider",
+        "iam:TagOpenIDConnectProvider",
+        "iam:UntagOpenIDConnectProvider",
+        "iam:UpdateOpenIDConnectProviderThumbprint",
+        "iam:AddClientIDToOpenIDConnectProvider",
+        "iam:RemoveClientIDFromOpenIDConnectProvider",
         "iam:AttachRolePolicy",
         "iam:DetachRolePolicy",
         "iam:PutRolePolicy",
@@ -106,7 +113,8 @@
       "Action": "iam:PassRole",
       "Resource": [
         "arn:aws:iam::211125458668:role/openproject-prod-eks-cluster-role",
-        "arn:aws:iam::211125458668:role/openproject-prod-eks-node-role"
+        "arn:aws:iam::211125458668:role/openproject-prod-eks-node-role",
+        "arn:aws:iam::211125458668:role/openproject-prod-eks-ebs-csi-role"
       ],
       "Condition": {
         "StringEquals": {
