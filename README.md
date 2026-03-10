@@ -72,6 +72,11 @@ helm repo add makeplane https://helm.plane.so
 helm repo update
 ```
 
+```bash
+helm repo add makeplane https://helm.plane.so
+helm repo update
+```
+
 The wrapper chart is located at `helm/plane` and environment overrides start with `helm/plane/values/dev.yaml`.
 
 ## Plane Storage Notes
@@ -168,12 +173,27 @@ aws iam put-role-policy `
   --profile personal
 ```
 
+```bash
+aws iam put-role-policy \
+  --role-name github-actions-terraform-prod \
+  --policy-name terraform-prod-policy \
+  --policy-document file://.github/iam/terraform-prod-policy.json \
+  --profile personal
+```
+
 Verify:
 
 ```powershell
 aws iam get-role-policy `
   --role-name github-actions-terraform-prod `
   --policy-name terraform-prod-policy `
+  --profile personal
+```
+
+```bash
+aws iam get-role-policy \
+  --role-name github-actions-terraform-prod \
+  --policy-name terraform-prod-policy \
   --profile personal
 ```
 
@@ -208,12 +228,22 @@ Use this checklist to bring up the project from scratch in a new AWS account.
    - Create GitHub OIDC identity provider (`token.actions.githubusercontent.com`) if missing.
    - Create role `github-actions-terraform-prod` with trust policy for your repo/branch.
    - Attach inline policy from `.github/iam/terraform-prod-policy.json`.
+   - Optional one-time bootstrap script:
+     - `chmod +x scripts/bootstrap-oidc.sh`
+     - `./scripts/bootstrap-oidc.sh --repo <OWNER/REPO> --branch main --profile personal`
    - Sync policy with:
      ```powershell
      aws iam put-role-policy `
        --role-name github-actions-terraform-prod `
        --policy-name terraform-prod-policy `
        --policy-document file://.github/iam/terraform-prod-policy.json `
+       --profile personal
+     ```
+     ```bash
+     aws iam put-role-policy \
+       --role-name github-actions-terraform-prod \
+       --policy-name terraform-prod-policy \
+       --policy-document file://.github/iam/terraform-prod-policy.json \
        --profile personal
      ```
 

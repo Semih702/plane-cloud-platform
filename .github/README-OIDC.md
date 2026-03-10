@@ -50,6 +50,13 @@ You can start from:
 
 - `.github/iam/terraform-prod-policy.json`
 
+Optional helper script (one-time bootstrap):
+
+```bash
+chmod +x scripts/bootstrap-oidc.sh
+./scripts/bootstrap-oidc.sh --repo <OWNER/REPO> --branch main --profile personal
+```
+
 ## 3. Configure GitHub secrets
 
 In GitHub repository settings, add:
