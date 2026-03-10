@@ -171,7 +171,8 @@ variable "rds_max_allocated_storage" {
 variable "rds_engine_version" {
   description = "PostgreSQL engine version"
   type        = string
-  default     = "15.7"
+  # Use major version so AWS selects a currently available minor release.
+  default = "15"
 }
 
 variable "rds_backup_retention_period" {
