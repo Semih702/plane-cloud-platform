@@ -109,6 +109,17 @@
           "iam:PassedToService": "eks.amazonaws.com"
         }
       }
+    },
+    {
+      "Sid": "AllowCreateRdsServiceLinkedRole",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "iam:AWSServiceName": "rds.amazonaws.com"
+        }
+      }
     }
   ]
 }

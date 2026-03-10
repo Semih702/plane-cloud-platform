@@ -52,6 +52,16 @@ jobs:
           role-to-assume: ${{ secrets.AWS_GITHUB_OIDC_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Ensure RDS Service-Linked Role
+        run: |
+          set -euo pipefail
+          if aws iam get-role --role-name AWSServiceRoleForRDS >/dev/null 2>&1; then
+            echo "AWSServiceRoleForRDS already exists."
+          else
+            echo "Creating AWSServiceRoleForRDS..."
+            aws iam create-service-linked-role --aws-service-name rds.amazonaws.com
+          fi
+
       - name: Terraform Init
         run: terraform -chdir=${{ env.TF_DIR }} init -input=false
 

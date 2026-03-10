@@ -103,6 +103,9 @@ Production Terraform uses an S3 remote backend with DynamoDB locking.
 
 Bootstrap resources are managed by `terraform/environments/bootstrap` and should be applied once per AWS account.
 
+For portability across fresh AWS accounts, the CI workflow also ensures
+`AWSServiceRoleForRDS` exists before Terraform runs.
+
 ## Future roadmap
 
 Planned additions include:
