@@ -27,7 +27,9 @@ plane-ce:
     ingress_annotations:
       alb.ingress.kubernetes.io/scheme: internet-facing
       alb.ingress.kubernetes.io/target-type: ip
-      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+      # Temporary workaround until custom domain + TLS are in place.
+      # Keeps legacy redirects that target :3000 reachable.
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTP":3000}]'
 
   ssl:
     createIssuer: false
