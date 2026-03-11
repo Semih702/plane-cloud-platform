@@ -21,7 +21,8 @@ plane-ce:
 
   ingress:
     enabled: true
-    appHost: plane-dev.example.com
+    # Temporary host without Route53/custom domain. Replace with your own domain later.
+    appHost: k8s-planedev-planedev-a16f021bc3-531214639.eu-west-1.elb.amazonaws.com
     ingressClass: alb
     ingress_annotations:
       alb.ingress.kubernetes.io/scheme: internet-facing
