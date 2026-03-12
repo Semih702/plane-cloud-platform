@@ -1,0 +1,34 @@
+{{- if .Values.autoscaling.enabled }}
+{{- $targetCPU := default 80 .Values.autoscaling.targetCPUUtilizationPercentage }}
+{{- $workloads := list
+  (dict "key" "web" "hpaName" (printf "%s-web-hpa" .Release.Name) "deploymentName" (printf "%s-web-wl" .Release.Name))
+  (dict "key" "api" "hpaName" (printf "%s-api-hpa" .Release.Name) "deploymentName" (printf "%s-api-wl" .Release.Name))
+  (dict "key" "worker" "hpaName" (printf "%s-worker-hpa" .Release.Name) "deploymentName" (printf "%s-worker-wl" .Release.Name))
+  (dict "key" "beatworker" "hpaName" (printf "%s-beat-worker-hpa" .Release.Name) "deploymentName" (printf "%s-beat-worker-wl" .Release.Name))
+}}
+{{- range $workload := $workloads }}
+{{- $cfg := default (dict) (index $.Values.autoscaling $workload.key) }}
+{{- if (default true $cfg.enabled) }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  namespace: {{ $.Release.Namespace }}
+  name: {{ $workload.hpaName }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $workload.deploymentName }}
+  minReplicas: {{ default 1 $cfg.minReplicas }}
+  maxReplicas: {{ default 3 $cfg.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $targetCPU }}
+{{- end }}
+{{- end }}
+{{- end }}
