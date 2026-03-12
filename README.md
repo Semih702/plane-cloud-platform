@@ -113,7 +113,7 @@ Deployment is handled in a single pipeline:
 
 - Workflow file: `.github/workflows/terraform-prod.yml`
 - PR: Terraform `init/validate/plan` + Helm `dependency update/lint/template`
-- Main push or manual `apply`: Terraform apply first, then Helm upgrade with `--atomic --wait`
+- Main push or manual `apply`: Terraform apply first, then Helm upgrade with `--rollback-on-failure --wait --wait-for-jobs`
 - Target cluster: `openproject-prod-eks`
 - Target namespace/release: `plane-dev`
 
@@ -129,6 +129,55 @@ Plane path routing is defined by the upstream `plane-ce` ingress template and is
 - `/god-mode` -> `plane-dev-admin:3000`
 
 `aws-load-balancer-controller` is installed by the production workflow and ingress class is set to `alb` in `helm/plane/values/dev.yaml`.
+
+## Plane CE CSV Import (API Script)
+
+Plane Community Edition does not provide the built-in CSV importer UI.  
+Use the script below to import CSV rows via Plane API:
+
+- Script: `scripts/import-plane-csv.py`
+- Runtime: Python 3.x (no external pip dependency)
+
+1. Export required environment variables
+
+```bash
+export PLANE_BASE_URL="http://<your-plane-url>"
+export PLANE_WORKSPACE_SLUG="<workspace-slug>"
+export PLANE_API_KEY="<plane-api-key>"
+```
+
+2. Run a dry-run first
+
+```bash
+python3 scripts/import-plane-csv.py \
+  --csv ./issues.csv \
+  --project-identifier <project-key> \
+  --dry-run
+```
+
+3. Import for real
+
+```bash
+python3 scripts/import-plane-csv.py \
+  --csv ./issues.csv \
+  --project-identifier <project-key> \
+  --create-missing-labels \
+  --skip-errors
+```
+
+Supported CSV columns:
+
+- Required: `name` (or `title`)
+- Optional: `description`, `description_html`, `priority`, `state`, `state_id`
+- Optional: `labels`, `label_ids`, `assignees`, `assignee_ids`
+- Optional: `estimate_point`, `start_date`, `target_date`, `type`, `module`, `parent`
+
+Notes:
+
+- Multi-value fields (`labels`, `assignees`, etc.) can use `;`, `,`, or `|` separators.
+- `assignees` resolves by member email/display name.
+- `state` and `labels` resolve by name.  
+  If you use `--create-missing-labels`, missing labels are created automatically.
 
 ## Bootstrap First (Best Practice)
 
@@ -219,7 +268,6 @@ When to run this:
 
 Planned additions include:
 
-- EKS cluster and supporting AWS modules
 - Argo CD for GitOps-based continuous delivery
 - Renovate for dependency/chart update automation
 - Automated, low-downtime Plane rollouts as Helm chart updates are published and promoted through controlled environments
@@ -273,7 +321,7 @@ Use this checklist to bring up the project from scratch in a new AWS account.
    - Pipeline order:
      - Terraform init/validate/plan
      - Terraform apply
-     - Helm upgrade/install for Plane (`--atomic --wait`) with Terraform outputs injected as Helm values
+     - Helm upgrade/install for Plane (`--rollback-on-failure --wait --wait-for-jobs`) with Terraform outputs injected as Helm values
 
 5. Verify cluster and app
    - `kubectl get pods -n plane-dev`
@@ -291,23 +339,28 @@ To move this repository closer to production-grade best practices, implement the
 
 1. IAM least-privilege refinement
    - Reduce broad permissions in `.github/iam/terraform-prod-policy.json`.
-   - Scope S3 and IAM actions to exact required resources and operations.
+   - Scope S3, IAM, EKS, and RDS actions to exact required resources and operations.
+   - Constrain `iam:PassRole` with explicit role ARNs and `iam:PassedToService`.
 
 2. Secret management hardening
    - Move sensitive runtime secrets to AWS Secrets Manager.
    - Add External Secrets Operator (ESO) so Kubernetes secrets are synced automatically.
+   - Add secret rotation policy and runbook.
 
-3. Managed data services for production
-   - Keep PostgreSQL on Amazon RDS.
-   - Plan migration from in-cluster Redis/RabbitMQ to managed alternatives (for example ElastiCache and Amazon MQ) based on workload needs.
+3. Managed data services migration
+   - PostgreSQL: migrate from in-cluster `pgdb` (EBS PVC) to Amazon RDS PostgreSQL.
+   - RabbitMQ: prefer Amazon MQ for RabbitMQ as the most compatible managed replacement.
+   - Redis: prefer Amazon ElastiCache for Redis for production HA/backup operations.
+   - Note: Amazon SQS is an option only with app-level queue integration changes; it is not a direct RabbitMQ drop-in.
 
-4. Ingress and TLS hardening
-   - Use AWS Load Balancer Controller with ACM certificates.
+4. DNS and TLS hardening
+   - Attach a real domain (Route 53 or external registrar).
+   - Use ACM certificates and enforce HTTPS redirects on ALB ingress.
    - Add ExternalDNS and tighten network/security group rules.
 
-5. Observability and alerting
+5. Observability, SLOs, and alerting
    - Add metrics/logging dashboards and alerts (CloudWatch and/or Prometheus/Grafana stack).
-   - Track pod health, node pressure, error rates, and database availability.
+   - Track pod health, node pressure, API error rates, queue lag, and database availability.
 
 6. Release safety controls
    - Enforce main branch protection with required checks and PR review.
@@ -316,3 +369,14 @@ To move this repository closer to production-grade best practices, implement the
 7. Disaster recovery readiness
    - Document backup and restore runbooks for RDS and S3.
    - Run periodic recovery drills and validate RTO/RPO targets.
+
+8. CI/CD pipeline optimization
+   - Run Terraform and Helm conditionally using path filters (`terraform/**` vs `helm/**`) so unrelated changes do not trigger both stacks.
+   - Split the current monolithic apply into focused jobs/workflows (`infra-apply`, `addons-deploy`, `app-deploy`) and execute only what changed.
+   - Move cluster add-on upgrades (metrics-server, aws-load-balancer-controller, cluster-autoscaler) to a separate workflow or run them only when add-on inputs change.
+   - Skip Terraform apply when plan has no changes.
+   - Use `helm diff upgrade` and skip Helm upgrade when rendered manifests are unchanged.
+   - Replace `helm dependency update` in CI with lock-file based dependency resolution (`Chart.lock` + `helm dependency build`) for faster and reproducible runs.
+   - Add caching for Terraform providers and Helm cache directories.
+   - Restart Plane workloads only when the service account annotation actually changes, instead of restarting on every deployment.
+   - Improve workflow concurrency (for example `cancel-in-progress: true` on PR workflows) to avoid wasted runner time.
