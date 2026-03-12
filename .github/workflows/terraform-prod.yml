@@ -56,6 +56,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.8.5
+          terraform_wrapper: false
 
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -117,6 +118,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.8.5
+          terraform_wrapper: false
 
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -149,12 +151,53 @@ jobs:
       - name: Read Terraform Outputs
         id: tf_outputs
         run: |
-          echo "vpc_id=$(terraform -chdir=${{ env.TF_DIR }} output -raw vpc_id)" >> "$GITHUB_OUTPUT"
-          echo "eks_node_group_name=$(terraform -chdir=${{ env.TF_DIR }} output -raw eks_node_group_name)" >> "$GITHUB_OUTPUT"
-          echo "plane_docstore_bucket_name=$(terraform -chdir=${{ env.TF_DIR }} output -raw plane_docstore_bucket_name)" >> "$GITHUB_OUTPUT"
-          echo "plane_irsa_role_arn=$(terraform -chdir=${{ env.TF_DIR }} output -raw plane_irsa_role_arn)" >> "$GITHUB_OUTPUT"
-          echo "aws_load_balancer_controller_irsa_role_arn=$(terraform -chdir=${{ env.TF_DIR }} output -raw eks_aws_load_balancer_controller_irsa_role_arn)" >> "$GITHUB_OUTPUT"
-          echo "cluster_autoscaler_irsa_role_arn=$(terraform -chdir=${{ env.TF_DIR }} output -raw eks_cluster_autoscaler_irsa_role_arn)" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+
+          require_nonempty() {
+            local name="$1"
+            local value="$2"
+            if [ -z "$value" ]; then
+              echo "Required Terraform output '$name' is empty."
+              exit 1
+            fi
+          }
+
+          require_iam_role_arn() {
+            local name="$1"
+            local value="$2"
+            if [[ ! "$value" =~ ^arn:aws:iam::[0-9]{12}:role/.+ ]]; then
+              echo "Terraform output '$name' is not a valid IAM role ARN: '$value'"
+              exit 1
+            fi
+          }
+
+          VPC_ID="$(terraform -chdir=${{ env.TF_DIR }} output -raw vpc_id)"
+          NODE_GROUP_NAME="$(terraform -chdir=${{ env.TF_DIR }} output -raw eks_node_group_name)"
+          DOCSTORE_BUCKET="$(terraform -chdir=${{ env.TF_DIR }} output -raw plane_docstore_bucket_name)"
+          PLANE_IRSA_ROLE_ARN="$(terraform -chdir=${{ env.TF_DIR }} output -raw plane_irsa_role_arn)"
+          AWS_LBC_IRSA_ROLE_ARN="$(terraform -chdir=${{ env.TF_DIR }} output -raw eks_aws_load_balancer_controller_irsa_role_arn)"
+          CLUSTER_AUTOSCALER_IRSA_ROLE_ARN="$(terraform -chdir=${{ env.TF_DIR }} output -raw eks_cluster_autoscaler_irsa_role_arn)"
+
+          require_nonempty "vpc_id" "$VPC_ID"
+          require_nonempty "eks_node_group_name" "$NODE_GROUP_NAME"
+          require_nonempty "plane_docstore_bucket_name" "$DOCSTORE_BUCKET"
+          require_iam_role_arn "plane_irsa_role_arn" "$PLANE_IRSA_ROLE_ARN"
+          require_iam_role_arn "eks_aws_load_balancer_controller_irsa_role_arn" "$AWS_LBC_IRSA_ROLE_ARN"
+          require_iam_role_arn "eks_cluster_autoscaler_irsa_role_arn" "$CLUSTER_AUTOSCALER_IRSA_ROLE_ARN"
+
+          echo "vpc_id=$VPC_ID" >> "$GITHUB_OUTPUT"
+          echo "eks_node_group_name=$NODE_GROUP_NAME" >> "$GITHUB_OUTPUT"
+          echo "plane_docstore_bucket_name=$DOCSTORE_BUCKET" >> "$GITHUB_OUTPUT"
+          echo "plane_irsa_role_arn=$PLANE_IRSA_ROLE_ARN" >> "$GITHUB_OUTPUT"
+          echo "aws_load_balancer_controller_irsa_role_arn=$AWS_LBC_IRSA_ROLE_ARN" >> "$GITHUB_OUTPUT"
+          echo "cluster_autoscaler_irsa_role_arn=$CLUSTER_AUTOSCALER_IRSA_ROLE_ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Cluster Autoscaler IRSA Role Exists
+        run: |
+          set -euo pipefail
+          ROLE_ARN="${{ steps.tf_outputs.outputs.cluster_autoscaler_irsa_role_arn }}"
+          ROLE_NAME="${ROLE_ARN##*/}"
+          aws iam get-role --role-name "$ROLE_NAME" --query 'Role.Arn' --output text >/dev/null
 
       - name: Resolve Node Group ASG For Cluster Autoscaler
         id: nodegroup_scaling
