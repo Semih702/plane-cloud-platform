@@ -152,6 +152,24 @@ variable "eks_aws_load_balancer_controller_service_account_name" {
   default     = "aws-load-balancer-controller"
 }
 
+variable "eks_enable_cluster_autoscaler" {
+  description = "Enable cluster-autoscaler IRSA role provisioning"
+  type        = bool
+  default     = true
+}
+
+variable "eks_cluster_autoscaler_namespace" {
+  description = "Namespace for cluster-autoscaler service account"
+  type        = string
+  default     = "kube-system"
+}
+
+variable "eks_cluster_autoscaler_service_account_name" {
+  description = "Service account name used by cluster-autoscaler"
+  type        = string
+  default     = "cluster-autoscaler"
+}
+
 variable "rds_db_name" {
   description = "OpenProject PostgreSQL database name"
   type        = string

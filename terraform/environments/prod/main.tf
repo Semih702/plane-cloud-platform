@@ -44,6 +44,9 @@ module "eks" {
   enable_aws_load_balancer_controller               = var.eks_enable_aws_load_balancer_controller
   aws_load_balancer_controller_namespace            = var.eks_aws_load_balancer_controller_namespace
   aws_load_balancer_controller_service_account_name = var.eks_aws_load_balancer_controller_service_account_name
+  enable_cluster_autoscaler                         = var.eks_enable_cluster_autoscaler
+  cluster_autoscaler_namespace                      = var.eks_cluster_autoscaler_namespace
+  cluster_autoscaler_service_account_name           = var.eks_cluster_autoscaler_service_account_name
 
   tags = {
     Project     = var.project_name

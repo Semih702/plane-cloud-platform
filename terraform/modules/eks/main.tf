@@ -172,6 +172,75 @@ resource "aws_iam_role_policy_attachment" "aws_load_balancer_controller_policy" 
   policy_arn = aws_iam_policy.aws_load_balancer_controller[0].arn
 }
 
+resource "aws_iam_role" "cluster_autoscaler_irsa" {
+  count = var.enable_cluster_autoscaler ? 1 : 0
+
+  name = "${var.cluster_name}-cluster-autoscaler-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Federated = aws_iam_openid_connect_provider.eks.arn
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Condition = {
+          StringEquals = {
+            "${local.oidc_issuer_hostpath}:aud" = "sts.amazonaws.com"
+            "${local.oidc_issuer_hostpath}:sub" = "system:serviceaccount:${var.cluster_autoscaler_namespace}:${var.cluster_autoscaler_service_account_name}"
+          }
+        }
+      }
+    ]
+  })
+
+  tags = merge(var.tags, {
+    Name = "${var.cluster_name}-cluster-autoscaler-role"
+  })
+}
+
+resource "aws_iam_policy" "cluster_autoscaler" {
+  count = var.enable_cluster_autoscaler ? 1 : 0
+
+  name        = "${var.cluster_name}-cluster-autoscaler-policy"
+  description = "IAM policy for Kubernetes cluster-autoscaler"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "autoscaling:DescribeAutoScalingGroups",
+          "autoscaling:DescribeAutoScalingInstances",
+          "autoscaling:DescribeLaunchConfigurations",
+          "autoscaling:DescribeScalingActivities",
+          "autoscaling:DescribeTags",
+          "autoscaling:SetDesiredCapacity",
+          "autoscaling:TerminateInstanceInAutoScalingGroup",
+          "ec2:DescribeInstanceTypes",
+          "ec2:GetInstanceTypesFromInstanceRequirements",
+          "ec2:DescribeLaunchTemplateVersions",
+          "eks:DescribeNodegroup"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+
+  tags = merge(var.tags, {
+    Name = "${var.cluster_name}-cluster-autoscaler-policy"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "cluster_autoscaler_policy" {
+  count = var.enable_cluster_autoscaler ? 1 : 0
+
+  role       = aws_iam_role.cluster_autoscaler_irsa[0].name
+  policy_arn = aws_iam_policy.cluster_autoscaler[0].arn
+}
+
 resource "aws_eks_cluster" "this" {
   name     = var.cluster_name
   role_arn = aws_iam_role.cluster.arn

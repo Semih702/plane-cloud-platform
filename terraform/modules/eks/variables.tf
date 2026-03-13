@@ -125,3 +125,21 @@ variable "aws_load_balancer_controller_service_account_name" {
   type        = string
   default     = "aws-load-balancer-controller"
 }
+
+variable "enable_cluster_autoscaler" {
+  description = "Create IRSA role and policy for Kubernetes cluster-autoscaler"
+  type        = bool
+  default     = true
+}
+
+variable "cluster_autoscaler_namespace" {
+  description = "Namespace for cluster-autoscaler service account"
+  type        = string
+  default     = "kube-system"
+}
+
+variable "cluster_autoscaler_service_account_name" {
+  description = "Service account name for cluster-autoscaler"
+  type        = string
+  default     = "cluster-autoscaler"
+}

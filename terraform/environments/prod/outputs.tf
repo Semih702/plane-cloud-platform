@@ -53,6 +53,11 @@ output "eks_aws_load_balancer_controller_irsa_role_arn" {
   value       = module.eks.aws_load_balancer_controller_irsa_role_arn
 }
 
+output "eks_cluster_autoscaler_irsa_role_arn" {
+  description = "IRSA role ARN for cluster-autoscaler"
+  value       = module.eks.cluster_autoscaler_irsa_role_arn
+}
+
 output "rds_instance_identifier" {
   description = "RDS PostgreSQL instance identifier"
   value       = module.rds_postgres.db_instance_identifier

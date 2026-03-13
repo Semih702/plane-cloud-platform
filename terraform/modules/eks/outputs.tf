@@ -37,3 +37,8 @@ output "aws_load_balancer_controller_irsa_role_arn" {
   description = "IRSA role ARN for aws-load-balancer-controller"
   value       = var.enable_aws_load_balancer_controller ? aws_iam_role.aws_load_balancer_controller_irsa[0].arn : null
 }
+
+output "cluster_autoscaler_irsa_role_arn" {
+  description = "IRSA role ARN for cluster-autoscaler"
+  value       = var.enable_cluster_autoscaler ? aws_iam_role.cluster_autoscaler_irsa[0].arn : null
+}
