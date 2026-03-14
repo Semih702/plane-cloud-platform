@@ -1,6 +1,10 @@
 locals {
   resolved_password = coalesce(var.password, random_password.user[0].result)
   is_multi_az_mode  = var.deployment_mode == "CLUSTER_MULTI_AZ"
+  credentials_secret_name_prefix = coalesce(
+    var.credentials_secret_name_prefix,
+    "${var.name}/credentials-"
+  )
 
   effective_subnet_ids = (
     local.is_multi_az_mode
@@ -73,8 +77,10 @@ resource "aws_mq_broker" "this" {
 }
 
 resource "aws_secretsmanager_secret" "credentials" {
-  name                    = "${var.name}/credentials"
-  recovery_window_in_days = 7
+  name                          = var.credentials_secret_name
+  name_prefix                   = var.credentials_secret_name == null ? local.credentials_secret_name_prefix : null
+  recovery_window_in_days       = var.credentials_secret_force_delete_without_recovery ? null : var.credentials_secret_recovery_window_in_days
+  force_delete_without_recovery = var.credentials_secret_force_delete_without_recovery
 
   tags = merge(var.tags, {
     Name = "${var.name}-credentials"
