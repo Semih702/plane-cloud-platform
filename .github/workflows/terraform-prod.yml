@@ -29,7 +29,7 @@ on:
 env:
   TF_DIR: terraform/environments/prod
   AWS_REGION: eu-west-1
-  EKS_CLUSTER_NAME: openproject-prod-eks
+  EKS_CLUSTER_NAME: plane-prod-eks
   HELM_RELEASE_NAME: plane-dev
   K8S_NAMESPACE: plane-dev
   HELM_CHART_DIR: helm/plane
@@ -64,22 +64,30 @@ jobs:
           role-to-assume: ${{ secrets.AWS_GITHUB_OIDC_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Ensure RDS Service-Linked Role
+      - name: Ensure AWS Service-Linked Roles
         run: |
           set -euo pipefail
-          if aws iam get-role --role-name AWSServiceRoleForRDS >/dev/null 2>&1; then
-            echo "AWSServiceRoleForRDS already exists."
-          else
-            echo "Creating AWSServiceRoleForRDS..."
-            aws iam create-service-linked-role --aws-service-name rds.amazonaws.com
-          fi
+          services=(
+            "rds.amazonaws.com:AWSServiceRoleForRDS"
+            "mq.amazonaws.com:AWSServiceRoleForAmazonMQ"
+            "elasticache.amazonaws.com:AWSServiceRoleForElastiCache"
+          )
+          for entry in "${services[@]}"; do
+            IFS=':' read -r service_name role_name <<< "$entry"
+            if aws iam get-role --role-name "$role_name" >/dev/null 2>&1; then
+              echo "$role_name already exists."
+            else
+              echo "Creating $role_name for $service_name..."
+              aws iam create-service-linked-role --aws-service-name "$service_name"
+            fi
+          done
 
       - name: Terraform Init
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           terraform -chdir=${{ env.TF_DIR }} init -input=false \
-            -backend-config="bucket=openproject-cloud-platform-tfstate-${ACCOUNT_ID}" \
-            -backend-config="dynamodb_table=openproject-cloud-platform-tf-locks"
+            -backend-config="bucket=plane-cloud-platform-tfstate-${ACCOUNT_ID}" \
+            -backend-config="dynamodb_table=plane-cloud-platform-tf-locks"
 
       - name: Terraform Validate
         run: terraform -chdir=${{ env.TF_DIR }} validate
@@ -126,12 +134,30 @@ jobs:
           role-to-assume: ${{ secrets.AWS_GITHUB_OIDC_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Ensure AWS Service-Linked Roles
+        run: |
+          set -euo pipefail
+          services=(
+            "rds.amazonaws.com:AWSServiceRoleForRDS"
+            "mq.amazonaws.com:AWSServiceRoleForAmazonMQ"
+            "elasticache.amazonaws.com:AWSServiceRoleForElastiCache"
+          )
+          for entry in "${services[@]}"; do
+            IFS=':' read -r service_name role_name <<< "$entry"
+            if aws iam get-role --role-name "$role_name" >/dev/null 2>&1; then
+              echo "$role_name already exists."
+            else
+              echo "Creating $role_name for $service_name..."
+              aws iam create-service-linked-role --aws-service-name "$service_name"
+            fi
+          done
+
       - name: Terraform Init
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           terraform -chdir=${{ env.TF_DIR }} init -input=false \
-            -backend-config="bucket=openproject-cloud-platform-tfstate-${ACCOUNT_ID}" \
-            -backend-config="dynamodb_table=openproject-cloud-platform-tf-locks"
+            -backend-config="bucket=plane-cloud-platform-tfstate-${ACCOUNT_ID}" \
+            -backend-config="dynamodb_table=plane-cloud-platform-tf-locks"
 
       - name: Terraform Apply
         run: terraform -chdir=${{ env.TF_DIR }} apply -input=false -auto-approve
@@ -451,3 +477,4 @@ jobs:
           for deploy in "${{ env.HELM_RELEASE_NAME }}-api-wl" "${{ env.HELM_RELEASE_NAME }}-live-wl" "${{ env.HELM_RELEASE_NAME }}-worker-wl" "${{ env.HELM_RELEASE_NAME }}-beat-worker-wl" "${{ env.HELM_RELEASE_NAME }}-web-wl" "${{ env.HELM_RELEASE_NAME }}-admin-wl" "${{ env.HELM_RELEASE_NAME }}-space-wl"; do
             kubectl rollout status "deployment/${deploy}" -n "${{ env.K8S_NAMESPACE }}" --timeout=5m || true
           done
+

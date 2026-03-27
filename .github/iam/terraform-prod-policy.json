@@ -137,7 +137,7 @@
       "Resource": "*",
       "Condition": {
         "StringEquals": {
-          "aws:RequestTag/Project": "openproject",
+          "aws:RequestTag/Project": "plane",
           "aws:RequestTag/Environment": "prod",
           "aws:RequestTag/ManagedBy": "terraform"
         }
@@ -154,11 +154,11 @@
         "mq:RemoveTags"
       ],
       "Resource": [
-        "arn:aws:mq:eu-west-1:211125458668:broker:openproject-prod-rabbitmq:*"
+        "arn:aws:mq:eu-west-1:211125458668:broker:plane-prod-rabbitmq:*"
       ],
       "Condition": {
         "StringEquals": {
-          "aws:ResourceTag/Project": "openproject",
+          "aws:ResourceTag/Project": "plane",
           "aws:ResourceTag/Environment": "prod",
           "aws:ResourceTag/ManagedBy": "terraform"
         }
@@ -168,17 +168,25 @@
       "Sid": "TerraformElastiCacheCreateWrite",
       "Effect": "Allow",
       "Action": [
-        "elasticache:CreateCacheSubnetGroup",
-        "elasticache:CreateReplicationGroup"
+        "elasticache:CreateCacheSubnetGroup"
       ],
       "Resource": "*",
       "Condition": {
         "StringEquals": {
-          "aws:RequestTag/Project": "openproject",
+          "aws:RequestTag/Project": "plane",
           "aws:RequestTag/Environment": "prod",
           "aws:RequestTag/ManagedBy": "terraform"
         }
       }
+    },
+    {
+      "Sid": "TerraformElastiCacheCreateReplicationGroup",
+      "Effect": "Allow",
+      "Action": [
+        "elasticache:CreateReplicationGroup",
+        "elasticache:AddTagsToResource"
+      ],
+      "Resource": "*"
     },
     {
       "Sid": "TerraformElastiCacheScopedWrite",
@@ -194,12 +202,12 @@
         "elasticache:RemoveTagsFromResource"
       ],
       "Resource": [
-        "arn:aws:elasticache:eu-west-1:211125458668:subnetgroup:openproject-prod-redis-subnet-group",
-        "arn:aws:elasticache:eu-west-1:211125458668:replicationgroup:openproject-prod-redis"
+        "arn:aws:elasticache:eu-west-1:211125458668:subnetgroup:plane-prod-redis-subnet-group",
+        "arn:aws:elasticache:eu-west-1:211125458668:replicationgroup:plane-prod-redis"
       ],
       "Condition": {
         "StringEquals": {
-          "aws:ResourceTag/Project": "openproject",
+          "aws:ResourceTag/Project": "plane",
           "aws:ResourceTag/Environment": "prod",
           "aws:ResourceTag/ManagedBy": "terraform"
         }
@@ -210,9 +218,9 @@
       "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": [
-        "arn:aws:iam::211125458668:role/openproject-prod-eks-cluster-role",
-        "arn:aws:iam::211125458668:role/openproject-prod-eks-node-role",
-        "arn:aws:iam::211125458668:role/openproject-prod-eks-ebs-csi-role"
+        "arn:aws:iam::211125458668:role/plane-prod-eks-cluster-role",
+        "arn:aws:iam::211125458668:role/plane-prod-eks-node-role",
+        "arn:aws:iam::211125458668:role/plane-prod-eks-ebs-csi-role"
       ],
       "Condition": {
         "StringEquals": {
@@ -230,6 +238,29 @@
           "iam:AWSServiceName": "rds.amazonaws.com"
         }
       }
+    },
+    {
+      "Sid": "AllowCreateAmazonMqServiceLinkedRole",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "iam:AWSServiceName": "mq.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "AllowCreateElastiCacheServiceLinkedRole",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "iam:AWSServiceName": "elasticache.amazonaws.com"
+        }
+      }
     }
   ]
 }
+

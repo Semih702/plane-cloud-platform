@@ -1,6 +1,6 @@
 
 # local kubeconfig
-kubeconfig-openproject
+kubeconfig-plane
 
 
 # Terraform local state and cache
@@ -11,3 +11,4 @@ crash.log
 
 # local runtime overrides with sensitive connection URLs
 helm/plane/values/dev.runtime.local.yaml
+

@@ -114,7 +114,7 @@ Deployment is handled in a single pipeline:
 - Workflow file: `.github/workflows/terraform-prod.yml`
 - PR: Terraform `init/validate/plan` + Helm `dependency update/lint/template`
 - Main push or manual `apply`: Terraform apply first, then Helm upgrade with `--rollback-on-failure --wait --wait-for-jobs`
-- Target cluster: `openproject-prod-eks`
+- Target cluster: `plane-prod-eks`
 - Target namespace/release: `plane-dev`
 
 ## Manual Helm Upgrade Runbook (Local)
@@ -219,8 +219,8 @@ For a fresh AWS account, run bootstrap once before prod:
 
 1. Run workflow `.github/workflows/terraform-bootstrap.yml` with `action=apply`
 2. This creates:
-   - S3 state bucket: `openproject-cloud-platform-tfstate-<account-id>`
-   - DynamoDB lock table: `openproject-cloud-platform-tf-locks`
+   - S3 state bucket: `plane-cloud-platform-tfstate-<account-id>`
+   - DynamoDB lock table: `plane-cloud-platform-tf-locks`
 3. Then run normal prod workflow `.github/workflows/terraform-prod.yml`
 
 ## Workflow Runbook
@@ -241,8 +241,8 @@ Recommended:
 
 Production Terraform uses an S3 remote backend with DynamoDB locking.
 
-- Backend bucket pattern: `openproject-cloud-platform-tfstate-<account-id>`
-- Lock table: `openproject-cloud-platform-tf-locks`
+- Backend bucket pattern: `plane-cloud-platform-tfstate-<account-id>`
+- Lock table: `plane-cloud-platform-tf-locks`
 
 Bootstrap resources are managed by `terraform/environments/bootstrap` and should be applied once per AWS account (via bootstrap workflow).
 
@@ -302,8 +302,12 @@ When to run this:
 
 Planned additions include:
 
-- Argo CD for GitOps-based continuous delivery
-- Renovate for dependency/chart update automation
+- Argo CD for GitOps-based continuous delivery as a later-stage platform improvement, with separate applications for platform add-ons and Plane
+- External Secrets Operator (ESO) to sync AWS Secrets Manager values into Kubernetes instead of generating runtime values in CI
+- A staging environment and promotion flow (`dev` -> `staging` -> `prod`)
+- Renovate for Terraform provider, Helm chart, and GitHub Actions update automation
+- Near-term preference: use Renovate first for Plane version detection and update PRs before introducing GitOps complexity
+- Reproducible Helm dependency management with pinned chart versions and lock-file based installs
 - Automated, low-downtime Plane rollouts as Helm chart updates are published and promoted through controlled environments
 
 ## Notes
@@ -346,8 +350,8 @@ Use this checklist to bring up the project from scratch in a new AWS account.
    - Open workflow `Terraform Bootstrap`.
    - Run with `action=apply`.
    - This creates:
-     - `openproject-cloud-platform-tfstate-<account-id>` (S3 backend bucket)
-     - `openproject-cloud-platform-tf-locks` (DynamoDB lock table)
+     - `plane-cloud-platform-tfstate-<account-id>` (S3 backend bucket)
+     - `plane-cloud-platform-tf-locks` (DynamoDB lock table)
 
 4. Run production workflow
    - Open workflow `Terraform Prod`.
@@ -377,7 +381,7 @@ To move this repository closer to production-grade best practices, implement the
    - Constrain `iam:PassRole` with explicit role ARNs and `iam:PassedToService`.
 
 2. Secret management hardening
-   - Move sensitive runtime secrets to AWS Secrets Manager.
+   - Keep runtime secrets in AWS Secrets Manager and remove CI-generated temporary runtime values files.
    - Add External Secrets Operator (ESO) so Kubernetes secrets are synced automatically.
    - Add secret rotation policy and runbook.
 
@@ -414,3 +418,40 @@ To move this repository closer to production-grade best practices, implement the
    - Add caching for Terraform providers and Helm cache directories.
    - Restart Plane workloads only when the service account annotation actually changes, instead of restarting on every deployment.
    - Improve workflow concurrency (for example `cancel-in-progress: true` on PR workflows) to avoid wasted runner time.
+
+9. Network cost optimization with VPC endpoints
+   - Evaluate whether NAT gateways can be removed entirely for private workloads.
+   - Add the required VPC endpoints for AWS services used from private subnets, such as S3, ECR (`api` and `dkr`), STS, CloudWatch Logs, and Secrets Manager.
+   - Keep private node and pod traffic on AWS backbone where possible, reduce NAT data processing charges, and document which endpoints are mandatory before disabling NAT.
+
+10. GitOps adoption with Argo CD
+   - Bootstrap Argo CD after cluster creation and keep its base installation declarative.
+   - Model separate Argo CD applications for cluster add-ons and the Plane application.
+   - Let GitHub Actions focus on validation, plan output, and policy checks while Argo CD owns in-cluster reconciliation.
+   - Treat this as a later optimization; for simple upstream Plane version awareness and upgrade PRs, Renovate is sufficient in the near term.
+
+11. Environment strategy and promotion flow
+   - Add a staging environment that mirrors production structure with lower-cost sizing defaults.
+   - Promote chart and configuration changes through `dev` -> `staging` -> `prod` instead of deploying directly to production first.
+   - Separate environment-specific Terraform roots, Helm values, and runtime secret mappings more explicitly.
+
+12. Deployment reproducibility and upgrade safety
+   - Pin wrapper chart dependency versions instead of relying on `version: "*"` in `helm/plane/Chart.yaml`.
+   - Use `helm dependency build` from `Chart.lock` in CI for deterministic installs.
+   - Add `helm diff` and optional progressive rollout strategies for safer upgrades.
+
+13. Policy and security automation
+   - Add Terraform/Helm security checks such as `tfsec`, `checkov`, `trivy`, and secret scanning in CI.
+   - Enforce policy-as-code rules for public endpoints, encryption, tags, backup retention, and deletion protection.
+   - Consider cluster policy enforcement with Kyverno or Gatekeeper as the platform footprint grows.
+
+14. Workload resilience and scaling maturity
+   - Add PodDisruptionBudgets, topology spread constraints, and rollout safety settings for critical Plane workloads.
+   - Evaluate Karpenter or mixed on-demand/spot worker strategies once workload behavior is better understood.
+   - Tune HPA thresholds and resource requests from observed production metrics instead of static bootstrap defaults.
+
+15. Cost visibility and governance
+   - Add AWS Budgets and Cost Anomaly Detection for the account or project tags.
+   - Review retention and lifecycle settings for backups, logs, and object storage to control long-term cost.
+   - Document expected monthly cost envelopes per environment and revisit expensive defaults regularly.
+

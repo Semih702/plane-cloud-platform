@@ -21,13 +21,13 @@ variable "allowed_cidr_blocks" {
 variable "db_name" {
   description = "Initial database name"
   type        = string
-  default     = "openproject"
+  default     = "plane"
 }
 
 variable "master_username" {
   description = "Master username for PostgreSQL"
   type        = string
-  default     = "openproject"
+  default     = "plane"
 }
 
 variable "master_password" {
@@ -91,3 +91,4 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+

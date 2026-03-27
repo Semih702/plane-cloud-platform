@@ -13,5 +13,6 @@ variable "state_bucket_name" {
 variable "lock_table_name" {
   description = "DynamoDB table name for Terraform state locking"
   type        = string
-  default     = "openproject-cloud-platform-tf-locks"
+  default     = "plane-cloud-platform-tf-locks"
 }
+
