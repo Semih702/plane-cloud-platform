@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "project_name" {
   description = "Project name used in resource tags"
   type        = string
-  default     = "openproject"
+  default     = "plane"
 }
 
 variable "environment" {
@@ -171,19 +171,19 @@ variable "eks_cluster_autoscaler_service_account_name" {
 }
 
 variable "rds_db_name" {
-  description = "OpenProject PostgreSQL database name"
+  description = "Plane PostgreSQL database name"
   type        = string
-  default     = "openproject"
+  default     = "plane"
 }
 
 variable "rds_master_username" {
-  description = "Master username for OpenProject PostgreSQL"
+  description = "Master username for Plane PostgreSQL"
   type        = string
-  default     = "openproject"
+  default     = "plane"
 }
 
 variable "rds_master_password" {
-  description = "Master password for OpenProject PostgreSQL"
+  description = "Master password for Plane PostgreSQL"
   type        = string
   sensitive   = true
   default     = null
@@ -360,3 +360,4 @@ variable "plane_docstore_bucket_name" {
   type        = string
   default     = ""
 }
+
