@@ -163,6 +163,18 @@ resource "aws_s3_bucket_public_access_block" "plane_docstore" {
   restrict_public_buckets = true
 }
 
+resource "aws_s3_bucket_cors_configuration" "plane_docstore" {
+  bucket = aws_s3_bucket.plane_docstore.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "HEAD", "POST", "PUT"]
+    allowed_origins = var.plane_docstore_cors_allowed_origins
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
 resource "aws_iam_role" "plane_irsa" {
   name = "${var.project_name}-${var.environment}-plane-irsa-role"
 

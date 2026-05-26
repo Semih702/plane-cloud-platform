@@ -452,14 +452,18 @@ jobs:
           echo "runtime_values_file=/tmp/plane-runtime-values.yaml" >> "$GITHUB_OUTPUT"
 
       - name: Helm Upgrade/Install
+        env:
+          PLANE_S3_ENDPOINT_URL: ${{ secrets.PLANE_S3_ENDPOINT_URL }}
         run: |
+          S3_ENDPOINT_URL="${PLANE_S3_ENDPOINT_URL:-https://s3.${{ env.AWS_REGION }}.amazonaws.com}"
+
           helm upgrade --install "${{ env.HELM_RELEASE_NAME }}" "${{ env.HELM_CHART_DIR }}" \
             --namespace "${{ env.K8S_NAMESPACE }}" \
             --values "${{ env.HELM_VALUES_FILE }}" \
             --values "${{ steps.plane_runtime_values.outputs.runtime_values_file }}" \
             --set-string plane-ce.env.docstore_bucket="${{ steps.tf_outputs.outputs.plane_docstore_bucket_name }}" \
             --set-string plane-ce.env.aws_region="${{ env.AWS_REGION }}" \
-            --set-string plane-ce.env.aws_s3_endpoint_url="${{ secrets.PLANE_S3_ENDPOINT_URL }}" \
+            --set-string plane-ce.env.aws_s3_endpoint_url="${S3_ENDPOINT_URL}" \
             --rollback-on-failure \
             --wait \
             --wait-for-jobs \
