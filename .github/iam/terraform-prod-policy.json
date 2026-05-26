@@ -154,7 +154,7 @@
         "mq:RemoveTags"
       ],
       "Resource": [
-        "arn:aws:mq:eu-west-1:211125458668:broker:plane-prod-rabbitmq:*"
+        "arn:aws:mq:eu-west-1:925606812216:broker:plane-prod-rabbitmq:*"
       ],
       "Condition": {
         "StringEquals": {
@@ -202,8 +202,8 @@
         "elasticache:RemoveTagsFromResource"
       ],
       "Resource": [
-        "arn:aws:elasticache:eu-west-1:211125458668:subnetgroup:plane-prod-redis-subnet-group",
-        "arn:aws:elasticache:eu-west-1:211125458668:replicationgroup:plane-prod-redis"
+        "arn:aws:elasticache:eu-west-1:925606812216:subnetgroup:plane-prod-redis-subnet-group",
+        "arn:aws:elasticache:eu-west-1:925606812216:replicationgroup:plane-prod-redis"
       ],
       "Condition": {
         "StringEquals": {
@@ -218,9 +218,9 @@
       "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": [
-        "arn:aws:iam::211125458668:role/plane-prod-eks-cluster-role",
-        "arn:aws:iam::211125458668:role/plane-prod-eks-node-role",
-        "arn:aws:iam::211125458668:role/plane-prod-eks-ebs-csi-role"
+        "arn:aws:iam::925606812216:role/plane-prod-eks-cluster-role",
+        "arn:aws:iam::925606812216:role/plane-prod-eks-node-role",
+        "arn:aws:iam::925606812216:role/plane-prod-eks-ebs-csi-role"
       ],
       "Condition": {
         "StringEquals": {
