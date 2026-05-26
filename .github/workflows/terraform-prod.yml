@@ -68,6 +68,8 @@ jobs:
         run: |
           set -euo pipefail
           services=(
+            "eks.amazonaws.com:AWSServiceRoleForAmazonEKS"
+            "eks-nodegroup.amazonaws.com:AWSServiceRoleForAmazonEKSNodegroup"
             "rds.amazonaws.com:AWSServiceRoleForRDS"
             "mq.amazonaws.com:AWSServiceRoleForAmazonMQ"
             "elasticache.amazonaws.com:AWSServiceRoleForElastiCache"
@@ -137,6 +139,8 @@ jobs:
         run: |
           set -euo pipefail
           services=(
+            "eks.amazonaws.com:AWSServiceRoleForAmazonEKS"
+            "eks-nodegroup.amazonaws.com:AWSServiceRoleForAmazonEKSNodegroup"
             "rds.amazonaws.com:AWSServiceRoleForRDS"
             "mq.amazonaws.com:AWSServiceRoleForAmazonMQ"
             "elasticache.amazonaws.com:AWSServiceRoleForElastiCache"
