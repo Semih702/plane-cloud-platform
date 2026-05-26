@@ -243,6 +243,20 @@
       }
     },
     {
+      "Sid": "AllowCreateEksServiceLinkedRoles",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "iam:AWSServiceName": [
+            "eks.amazonaws.com",
+            "eks-nodegroup.amazonaws.com"
+          ]
+        }
+      }
+    },
+    {
       "Sid": "AllowCreateAmazonMqServiceLinkedRole",
       "Effect": "Allow",
       "Action": "iam:CreateServiceLinkedRole",

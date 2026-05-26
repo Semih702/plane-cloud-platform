@@ -3,9 +3,10 @@ locals {
 }
 
 resource "random_password" "master" {
-  count   = var.master_password == null ? 1 : 0
-  length  = 24
-  special = true
+  count            = var.master_password == null ? 1 : 0
+  length           = 24
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
 resource "aws_db_subnet_group" "this" {
