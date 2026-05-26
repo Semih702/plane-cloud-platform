@@ -363,3 +363,8 @@ variable "plane_docstore_bucket_name" {
   default     = ""
 }
 
+variable "plane_docstore_cors_allowed_origins" {
+  description = "Allowed browser origins for Plane direct S3 uploads. Replace the bootstrap wildcard with explicit app domains once DNS is stable."
+  type        = list(string)
+  default     = ["*"]
+}

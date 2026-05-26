@@ -42,7 +42,7 @@ plane-ce:
     remote_redis_url: ""
     docstore_bucket: "plane-dev-uploads"
     aws_region: "eu-west-1"
-    aws_s3_endpoint_url: ""
+    aws_s3_endpoint_url: "https://s3.eu-west-1.amazonaws.com"
 
   ingress:
     enabled: true

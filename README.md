@@ -55,6 +55,19 @@ We intentionally use one NAT Gateway per AZ to avoid cross-AZ egress dependencie
 
 If a single AZ has issues, workloads in other AZs keep outbound internet access via their local NAT Gateway.
 
+## Availability and isolation
+
+The production design is intentionally isolated and highly available at the platform layer:
+
+- Plane runs on its own dedicated EKS cluster: `plane-prod-eks`
+- EKS control plane and worker nodes use private subnets across 3 Availability Zones
+- Public exposure is handled through ALB ingress; application workloads stay inside the cluster/VPC boundary
+- One NAT Gateway per AZ avoids a single shared egress dependency for private workloads
+- Cluster Autoscaler is installed with IRSA so the managed node group can scale between configured minimum and maximum capacity
+- HPA rules are defined for core Plane workloads (`web`, `api`, `worker`, and `beatworker`) and use CPU utilization as the scaling signal
+
+Current bootstrap sizing is intentionally conservative for cost control. Production replica counts, HPA max replicas, and node group limits should be raised based on observed metrics and expected traffic.
+
 ## Deployment approach
 
 Terraform manages the AWS infrastructure baseline.
@@ -86,6 +99,8 @@ The wrapper chart is located at `helm/plane` and environment overrides start wit
 - MinIO is disabled in `helm/plane/values/dev.yaml`; Plane document storage is configured for direct S3 usage.
 - Plane workloads use IRSA (IAM Role for Service Account) for S3 access; no static S3 access key is required.
 - Wrapper chart creates Kubernetes Secret `plane-dev-doc-store-secrets` during `helm upgrade/install`, so app deploy is self-contained.
+- The S3 doc-store bucket has CORS enabled for browser-based presigned uploads.
+- CI defaults `AWS_S3_ENDPOINT_URL` to the regional S3 endpoint (`https://s3.eu-west-1.amazonaws.com`) to avoid global S3 endpoint redirects during uploads.
 
 ## GitHub CI/CD (OIDC)
 
@@ -105,7 +120,7 @@ Behavior:
 Required GitHub secrets:
 
 - `AWS_GITHUB_OIDC_ROLE_ARN`
-- `PLANE_S3_ENDPOINT_URL` (optional for AWS S3; can be empty)
+- `PLANE_S3_ENDPOINT_URL` (optional; when empty, CI uses `https://s3.<region>.amazonaws.com` for AWS S3)
 
 ## Unified Terraform + Helm Workflow
 
@@ -146,7 +161,7 @@ helm upgrade --install plane-dev helm/plane \
   --values helm/plane/values/dev.runtime.local.yaml \
   --set-string plane-ce.env.docstore_bucket="<docstore-bucket>" \
   --set-string plane-ce.env.aws_region="eu-west-1" \
-  --set-string plane-ce.env.aws_s3_endpoint_url=""
+  --set-string plane-ce.env.aws_s3_endpoint_url="https://s3.eu-west-1.amazonaws.com"
 ```
 
 Without the runtime override file, manual upgrades can fail due to empty managed-service URLs.
@@ -321,7 +336,7 @@ Use this checklist to bring up the project from scratch in a new AWS account.
 
 1. Create GitHub repository secrets
    - Add `AWS_GITHUB_OIDC_ROLE_ARN` in repository secrets.
-   - Add optional `PLANE_S3_ENDPOINT_URL` (leave empty for AWS S3).
+   - Add optional `PLANE_S3_ENDPOINT_URL` only for custom S3-compatible endpoints; leave empty for AWS S3.
 
 2. Configure AWS IAM/OIDC once (manual)
    - Create GitHub OIDC identity provider (`token.actions.githubusercontent.com`) if missing.
