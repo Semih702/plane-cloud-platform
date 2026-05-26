@@ -21,7 +21,10 @@
         "autoscaling:Describe*",
         "s3:Get*",
         "s3:List*",
-        "dynamodb:DescribeTable"
+        "dynamodb:DescribeTable",
+        "dynamodb:DescribeContinuousBackups",
+        "dynamodb:DescribeTimeToLive",
+        "dynamodb:ListTagsOfResource"
       ],
       "Resource": "*"
     },
