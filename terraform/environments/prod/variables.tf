@@ -81,7 +81,9 @@ variable "eks_bootstrap_cluster_creator_admin" {
 variable "eks_cluster_admin_principal_arns" {
   description = "IAM principal ARNs that should have cluster-admin access"
   type        = list(string)
-  default     = ["arn:aws:iam::925606812216:role/github-actions-terraform-prod"]
+  # The cluster creator already receives admin access through
+  # eks_bootstrap_cluster_creator_admin. Add only extra admin principals here.
+  default = []
 }
 
 variable "eks_node_group_name" {
