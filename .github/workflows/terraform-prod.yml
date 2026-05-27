@@ -98,21 +98,47 @@ jobs:
             fi
           done
 
-      - name: Terraform Init
+      - name: Resolve Terraform Backend
+        id: backend
         run: |
+          set -euo pipefail
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           STATE_BUCKET="${TF_STATE_BUCKET:-${TF_STATE_BUCKET_PREFIX}-${ACCOUNT_ID}}"
+          echo "state_bucket=${STATE_BUCKET}" >> "$GITHUB_OUTPUT"
+
+          if aws s3api head-bucket --bucket "${STATE_BUCKET}" >/dev/null 2>&1; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Terraform backend bucket '${STATE_BUCKET}' does not exist. Run Terraform Bootstrap with action=apply before remote-backed production plans."
+          fi
+
+      - name: Require Backend For Manual Plan
+        if: github.event_name == 'workflow_dispatch' && steps.backend.outputs.available != 'true'
+        run: |
+          echo "Terraform backend bucket '${{ steps.backend.outputs.state_bucket }}' does not exist."
+          echo "Run Terraform Bootstrap with action=apply, then rerun Terraform Prod with action=plan."
+          exit 1
+
+      - name: Terraform Init
+        if: steps.backend.outputs.available == 'true'
+        run: |
           terraform -chdir=${{ env.TF_DIR }} init -input=false \
-            -backend-config="bucket=${STATE_BUCKET}" \
+            -backend-config="bucket=${{ steps.backend.outputs.state_bucket }}" \
             -backend-config="key=${{ env.TF_STATE_KEY }}" \
             -backend-config="region=${{ env.AWS_REGION }}" \
             -backend-config="encrypt=true" \
             -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE }}"
 
+      - name: Terraform Init Without Backend
+        if: steps.backend.outputs.available != 'true'
+        run: terraform -chdir=${{ env.TF_DIR }} init -backend=false -input=false
+
       - name: Terraform Validate
         run: terraform -chdir=${{ env.TF_DIR }} validate
 
       - name: Terraform Plan
+        if: steps.backend.outputs.available == 'true'
         run: terraform -chdir=${{ env.TF_DIR }} plan -input=false -out=tfplan
 
       - name: Setup Helm
@@ -128,6 +154,7 @@ jobs:
         run: helm template "${{ env.HELM_RELEASE_NAME }}" "${{ env.HELM_CHART_DIR }}" --namespace "${{ env.K8S_NAMESPACE }}" --values "${{ env.HELM_VALUES_FILE }}" > /dev/null
 
       - name: Upload Plan Artifact
+        if: steps.backend.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: tfplan
