@@ -365,14 +365,15 @@ Planned additions include:
 
 Use this sequence for a fresh AWS account. The production workflow depends on the remote Terraform backend, so the bootstrap workflow must succeed before any production plan/apply can run.
 
-1. Log in to AWS locally with an admin-capable identity.
+1. Configure and log in to AWS locally with an admin-capable identity.
 
    ```bash
-   aws login
-   aws sts get-caller-identity
+   aws configure sso --profile <profile>
+   aws sso login --profile <profile>
+   aws sts get-caller-identity --profile <profile>
    ```
 
-   With a named profile:
+   If you use access keys or another credential source instead of IAM Identity Center, configure that profile and verify it resolves to the intended AWS account:
 
    ```bash
    aws sts get-caller-identity --profile <profile>
