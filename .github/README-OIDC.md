@@ -44,7 +44,7 @@ Example trust policy (replace placeholders):
 }
 ```
 
-Attach least-privilege IAM permissions for Terraform operations in `eu-west-1`.
+Attach IAM permissions for Terraform operations. The checked-in policy avoids hardcoded account IDs and uses resource-name patterns plus tag conditions where AWS supports them.
 
 You can start from:
 
@@ -54,14 +54,29 @@ Optional helper script (one-time bootstrap):
 
 ```bash
 chmod +x scripts/bootstrap-oidc.sh
-./scripts/bootstrap-oidc.sh --repo <OWNER/REPO> --branch main --profile personal
+./scripts/bootstrap-oidc.sh --repo <OWNER/REPO> --branch main --profile <profile>
 ```
+
+Re-run the helper after changes to `.github/iam/terraform-prod-policy.json`; it updates both trust policy and inline permissions.
 
 ## 3. Configure GitHub secrets
 
 In GitHub repository settings, add:
 
 - `AWS_GITHUB_OIDC_ROLE_ARN` = IAM role ARN created above
+
+Optional repository variables:
+
+- `AWS_REGION`
+- `PROJECT_NAME`
+- `ENVIRONMENT_NAME`
+- `TF_STATE_BUCKET_PREFIX`
+- `TF_STATE_BUCKET`
+- `TF_LOCK_TABLE`
+- `TF_STATE_KEY`
+- `HELM_RELEASE_NAME`
+- `K8S_NAMESPACE`
+- `PLANE_APP_HOST`
 
 ## 4. Protect production apply
 
@@ -71,8 +86,9 @@ The workflow already routes apply job to this environment.
 
 ## 5. Workflow behavior
 
-- Pull requests: `init`, `validate`, `plan`
-- Manual run (`workflow_dispatch`): choose `plan` or `apply`
+- `Terraform Bootstrap`: run `apply` once before production plans so the S3/DynamoDB backend exists.
+- Pull requests: production `init`, `validate`, and `plan`.
+- Manual run (`workflow_dispatch`): choose production `plan` or `apply`.
 
 ## 6. RDS password handling
 

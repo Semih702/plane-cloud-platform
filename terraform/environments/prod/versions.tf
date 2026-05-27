@@ -1,11 +1,7 @@
 terraform {
   required_version = ">= 1.6.0"
 
-  backend "s3" {
-    key     = "prod/terraform.tfstate"
-    region  = "eu-west-1"
-    encrypt = true
-  }
+  backend "s3" {}
 
   required_providers {
     aws = {

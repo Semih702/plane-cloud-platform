@@ -140,9 +140,11 @@
       "Resource": "*",
       "Condition": {
         "StringEquals": {
-          "aws:RequestTag/Project": "plane",
-          "aws:RequestTag/Environment": "prod",
           "aws:RequestTag/ManagedBy": "terraform"
+        },
+        "StringLike": {
+          "aws:RequestTag/Project": "*",
+          "aws:RequestTag/Environment": "*"
         }
       }
     },
@@ -154,16 +156,18 @@
         "mq:UpdateBroker",
         "mq:RebootBroker",
         "mq:CreateTags",
-        "mq:RemoveTags"
+        "mq:DeleteTags"
       ],
       "Resource": [
-        "arn:aws:mq:eu-west-1:925606812216:broker:plane-prod-rabbitmq:*"
+        "arn:aws:mq:*:*:broker:*-rabbitmq:*"
       ],
       "Condition": {
         "StringEquals": {
-          "aws:ResourceTag/Project": "plane",
-          "aws:ResourceTag/Environment": "prod",
           "aws:ResourceTag/ManagedBy": "terraform"
+        },
+        "StringLike": {
+          "aws:ResourceTag/Project": "*",
+          "aws:ResourceTag/Environment": "*"
         }
       }
     },
@@ -176,9 +180,11 @@
       "Resource": "*",
       "Condition": {
         "StringEquals": {
-          "aws:RequestTag/Project": "plane",
-          "aws:RequestTag/Environment": "prod",
           "aws:RequestTag/ManagedBy": "terraform"
+        },
+        "StringLike": {
+          "aws:RequestTag/Project": "*",
+          "aws:RequestTag/Environment": "*"
         }
       }
     },
@@ -205,14 +211,16 @@
         "elasticache:RemoveTagsFromResource"
       ],
       "Resource": [
-        "arn:aws:elasticache:eu-west-1:925606812216:subnetgroup:plane-prod-redis-subnet-group",
-        "arn:aws:elasticache:eu-west-1:925606812216:replicationgroup:plane-prod-redis"
+        "arn:aws:elasticache:*:*:subnetgroup:*-redis-subnet-group",
+        "arn:aws:elasticache:*:*:replicationgroup:*-redis"
       ],
       "Condition": {
         "StringEquals": {
-          "aws:ResourceTag/Project": "plane",
-          "aws:ResourceTag/Environment": "prod",
           "aws:ResourceTag/ManagedBy": "terraform"
+        },
+        "StringLike": {
+          "aws:ResourceTag/Project": "*",
+          "aws:ResourceTag/Environment": "*"
         }
       }
     },
@@ -221,9 +229,9 @@
       "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": [
-        "arn:aws:iam::925606812216:role/plane-prod-eks-cluster-role",
-        "arn:aws:iam::925606812216:role/plane-prod-eks-node-role",
-        "arn:aws:iam::925606812216:role/plane-prod-eks-ebs-csi-role"
+        "arn:aws:iam::*:role/*-eks-cluster-role",
+        "arn:aws:iam::*:role/*-eks-node-role",
+        "arn:aws:iam::*:role/*-eks-ebs-csi-role"
       ],
       "Condition": {
         "StringEquals": {

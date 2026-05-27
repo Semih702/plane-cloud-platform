@@ -20,7 +20,7 @@ autoscaling:
 
 plane-ce:
   external_secrets:
-    doc_store_existingSecret: plane-dev-doc-store-secrets
+    doc_store_existingSecret: ""
 
   postgres:
     local_setup: false
@@ -40,14 +40,15 @@ plane-ce:
     pgdb_remote_url: ""
     # Set by CI from Terraform ElastiCache output.
     remote_redis_url: ""
-    docstore_bucket: "plane-dev-uploads"
-    aws_region: "eu-west-1"
-    aws_s3_endpoint_url: "https://s3.eu-west-1.amazonaws.com"
+    docstore_bucket: ""
+    aws_region: ""
+    aws_s3_endpoint_url: ""
 
   ingress:
     enabled: true
-    # Temporary host without Route53/custom domain. Replace with your own domain later.
-    appHost: k8s-planedev-planedev-a16f021bc3-1442748221.eu-west-1.elb.amazonaws.com
+    # CI injects PLANE_APP_HOST when set. If it is empty, CI first deploys with
+    # a bootstrap host and then adopts the generated ALB hostname automatically.
+    appHost: ""
     ingressClass: alb
     ingress_annotations:
       alb.ingress.kubernetes.io/scheme: internet-facing

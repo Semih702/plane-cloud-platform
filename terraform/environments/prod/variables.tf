@@ -346,15 +346,21 @@ variable "redis_auth_token" {
 }
 
 variable "plane_namespace" {
-  description = "Kubernetes namespace where Plane is deployed"
+  description = "Optional Kubernetes namespace override where Plane is deployed"
   type        = string
-  default     = "plane-dev"
+  default     = ""
+}
+
+variable "plane_release_name" {
+  description = "Helm release name for Plane; used to derive the default service account name"
+  type        = string
+  default     = ""
 }
 
 variable "plane_service_account_name" {
-  description = "Plane Kubernetes service account name used by workloads"
+  description = "Optional Plane Kubernetes service account name override used by workloads"
   type        = string
-  default     = "plane-dev-srv-account"
+  default     = ""
 }
 
 variable "plane_docstore_bucket_name" {

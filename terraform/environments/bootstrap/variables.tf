@@ -10,6 +10,12 @@ variable "state_bucket_name" {
   default     = ""
 }
 
+variable "state_bucket_prefix" {
+  description = "Prefix used for the default Terraform remote state bucket name"
+  type        = string
+  default     = "plane-cloud-platform-tfstate"
+}
+
 variable "lock_table_name" {
   description = "DynamoDB table name for Terraform state locking"
   type        = string

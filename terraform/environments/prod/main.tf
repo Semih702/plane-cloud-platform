@@ -2,6 +2,9 @@ data "aws_caller_identity" "current" {}
 
 locals {
   plane_docstore_bucket_name = var.plane_docstore_bucket_name != "" ? var.plane_docstore_bucket_name : "${var.project_name}-${var.environment}-plane-docstore-${data.aws_caller_identity.current.account_id}"
+  plane_namespace            = var.plane_namespace != "" ? var.plane_namespace : "${var.project_name}-${var.environment}"
+  plane_release_name         = var.plane_release_name != "" ? var.plane_release_name : "${var.project_name}-${var.environment}"
+  plane_service_account_name = var.plane_service_account_name != "" ? var.plane_service_account_name : "${local.plane_release_name}-srv-account"
 }
 
 module "vpc" {
@@ -190,7 +193,7 @@ resource "aws_iam_role" "plane_irsa" {
         Condition = {
           StringEquals = {
             "${module.eks.oidc_issuer_hostpath}:aud" = "sts.amazonaws.com"
-            "${module.eks.oidc_issuer_hostpath}:sub" = "system:serviceaccount:${var.plane_namespace}:${var.plane_service_account_name}"
+            "${module.eks.oidc_issuer_hostpath}:sub" = "system:serviceaccount:${local.plane_namespace}:${local.plane_service_account_name}"
           }
         }
       }

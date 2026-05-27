@@ -1,7 +1,7 @@
 data "aws_caller_identity" "current" {}
 
 locals {
-  effective_state_bucket_name = var.state_bucket_name != "" ? var.state_bucket_name : "plane-cloud-platform-tfstate-${data.aws_caller_identity.current.account_id}"
+  effective_state_bucket_name = var.state_bucket_name != "" ? var.state_bucket_name : "${var.state_bucket_prefix}-${data.aws_caller_identity.current.account_id}"
 }
 
 resource "aws_s3_bucket" "tf_state" {
