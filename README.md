@@ -21,9 +21,37 @@ The initial focus is a clean and extensible network foundation for EKS-based dep
 - `helm/plane`: Plane wrapper chart
 - `helm/plane/values/dev.yaml`: current starting values for development overrides
 
+## Configuration model
+
+The repository is designed to work without editing environment-specific values directly into workflow files.
+
+Required GitHub secret:
+
+- `AWS_GITHUB_OIDC_ROLE_ARN`: IAM role assumed by GitHub Actions through OIDC
+
+Optional GitHub secrets:
+
+- `PLANE_S3_ENDPOINT_URL`: only for custom S3-compatible endpoints; leave unset for AWS S3
+
+Optional GitHub repository variables:
+
+- `AWS_REGION`: defaults to `eu-west-1`
+- `PROJECT_NAME`: defaults to `plane`
+- `ENVIRONMENT_NAME`: defaults to `prod`
+- `TF_STATE_BUCKET_PREFIX`: defaults to `plane-cloud-platform-tfstate`
+- `TF_STATE_BUCKET`: exact backend bucket override; normally leave unset
+- `TF_LOCK_TABLE`: defaults to `plane-cloud-platform-tf-locks`
+- `TF_STATE_KEY`: defaults to `prod/terraform.tfstate`
+- `HELM_RELEASE_NAME`: defaults to `<PROJECT_NAME>-<ENVIRONMENT_NAME>` (`plane-prod` with defaults)
+- `K8S_NAMESPACE`: defaults to `<PROJECT_NAME>-<ENVIRONMENT_NAME>` (`plane-prod` with defaults)
+- `HELM_VALUES_FILE`: defaults to `helm/plane/values/dev.yaml`
+- `PLANE_APP_HOST`: optional custom domain for Plane
+
+If `PLANE_APP_HOST` is unset, the production workflow deploys once with a temporary bootstrap host, reads the generated ALB DNS name, then runs a second Helm upgrade to use that ALB DNS name as Plane's app host. If you already have a real domain, set `PLANE_APP_HOST` before the first production apply and later point DNS at the ALB.
+
 ## Current AWS network design (implemented)
 
-Region: `eu-west-1`
+Default region: `eu-west-1` through `AWS_REGION`
 
 VPC:
 
@@ -59,7 +87,7 @@ If a single AZ has issues, workloads in other AZs keep outbound internet access 
 
 The production design is intentionally isolated and highly available at the platform layer:
 
-- Plane runs on its own dedicated EKS cluster: `plane-prod-eks`
+- Plane runs on its own dedicated EKS cluster: `<PROJECT_NAME>-<ENVIRONMENT_NAME>-eks` (`plane-prod-eks` with defaults)
 - EKS control plane and worker nodes use private subnets across 3 Availability Zones
 - Public exposure is handled through ALB ingress; application workloads stay inside the cluster/VPC boundary
 - One NAT Gateway per AZ avoids a single shared egress dependency for private workloads
@@ -98,9 +126,9 @@ The wrapper chart is located at `helm/plane` and environment overrides start wit
 - Wrapper chart creates `gp3-csi` StorageClass and Plane stateful components use it explicitly.
 - MinIO is disabled in `helm/plane/values/dev.yaml`; Plane document storage is configured for direct S3 usage.
 - Plane workloads use IRSA (IAM Role for Service Account) for S3 access; no static S3 access key is required.
-- Wrapper chart creates Kubernetes Secret `plane-dev-doc-store-secrets` during `helm upgrade/install`, so app deploy is self-contained.
+- CI derives the Plane service account and document-store secret names from `HELM_RELEASE_NAME`, and the wrapper chart creates the document-store secret during `helm upgrade/install`, so app deploy is self-contained.
 - The S3 doc-store bucket has CORS enabled for browser-based presigned uploads.
-- CI defaults `AWS_S3_ENDPOINT_URL` to the regional S3 endpoint (`https://s3.eu-west-1.amazonaws.com`) to avoid global S3 endpoint redirects during uploads.
+- CI defaults `AWS_S3_ENDPOINT_URL` to the regional S3 endpoint (`https://s3.<AWS_REGION>.amazonaws.com`) to avoid global S3 endpoint redirects during uploads.
 
 ## GitHub CI/CD (OIDC)
 
@@ -117,7 +145,7 @@ Behavior:
 - Manual dispatch supports `plan` and `apply`
 - `apply` runs in GitHub Environment `prod` for approval-gated changes
 
-Required GitHub secrets:
+GitHub secrets used by the workflows:
 
 - `AWS_GITHUB_OIDC_ROLE_ARN`
 - `PLANE_S3_ENDPOINT_URL` (optional; when empty, CI uses `https://s3.<region>.amazonaws.com` for AWS S3)
@@ -129,8 +157,8 @@ Deployment is handled in a single pipeline:
 - Workflow file: `.github/workflows/terraform-prod.yml`
 - PR: Terraform `init/validate/plan` + Helm `dependency update/lint/template`
 - Main push or manual `apply`: Terraform apply first, then Helm upgrade with `--rollback-on-failure --wait --wait-for-jobs`
-- Target cluster: `plane-prod-eks`
-- Target namespace/release: `plane-dev`
+- Target cluster: `<PROJECT_NAME>-<ENVIRONMENT_NAME>-eks`
+- Target namespace/release: `K8S_NAMESPACE` / `HELM_RELEASE_NAME`
 
 ## Manual Helm Upgrade Runbook (Local)
 
@@ -154,28 +182,30 @@ cp helm/plane/values/dev.runtime.example.yaml helm/plane/values/dev.runtime.loca
 3. Run helm upgrade with both files:
 
 ```bash
-helm upgrade --install plane-dev helm/plane \
-  --namespace plane-dev \
+helm upgrade --install <release-name> helm/plane \
+  --namespace <namespace> \
   --create-namespace \
   --values helm/plane/values/dev.yaml \
   --values helm/plane/values/dev.runtime.local.yaml \
+  --set-string plane-ce.external_secrets.doc_store_existingSecret="<release-name>-doc-store-secrets" \
+  --set-string plane-ce.ingress.appHost="<plane-app-host>" \
   --set-string plane-ce.env.docstore_bucket="<docstore-bucket>" \
-  --set-string plane-ce.env.aws_region="eu-west-1" \
-  --set-string plane-ce.env.aws_s3_endpoint_url="https://s3.eu-west-1.amazonaws.com"
+  --set-string plane-ce.env.aws_region="<aws-region>" \
+  --set-string plane-ce.env.aws_s3_endpoint_url="https://s3.<aws-region>.amazonaws.com"
 ```
 
 Without the runtime override file, manual upgrades can fail due to empty managed-service URLs.
 
 ## Plane ALB Routing
 
-Plane path routing is defined by the upstream `plane-ce` ingress template and is applied through this wrapper chart.
+Plane path routing is defined by the upstream `plane-ce` ingress template and is applied through this wrapper chart. Service names are derived from `HELM_RELEASE_NAME`; examples below use the default release `plane-prod`.
 
-- `/` -> `plane-dev-web:3000`
-- `/api` -> `plane-dev-api:8000`
-- `/auth` -> `plane-dev-api:8000`
-- `/live/` -> `plane-dev-live:3000`
-- `/spaces` -> `plane-dev-space:3000`
-- `/god-mode` -> `plane-dev-admin:3000`
+- `/` -> `plane-prod-web:3000`
+- `/api` -> `plane-prod-api:8000`
+- `/auth` -> `plane-prod-api:8000`
+- `/live/` -> `plane-prod-live:3000`
+- `/spaces` -> `plane-prod-space:3000`
+- `/god-mode` -> `plane-prod-admin:3000`
 
 `aws-load-balancer-controller` is installed by the production workflow and ingress class is set to `alb` in `helm/plane/values/dev.yaml`.
 
@@ -234,8 +264,8 @@ For a fresh AWS account, run bootstrap once before prod:
 
 1. Run workflow `.github/workflows/terraform-bootstrap.yml` with `action=apply`
 2. This creates:
-   - S3 state bucket: `plane-cloud-platform-tfstate-<account-id>`
-   - DynamoDB lock table: `plane-cloud-platform-tf-locks`
+   - S3 state bucket: `<TF_STATE_BUCKET_PREFIX>-<account-id>` unless `TF_STATE_BUCKET` is set
+   - DynamoDB lock table: `TF_LOCK_TABLE`
 3. Then run normal prod workflow `.github/workflows/terraform-prod.yml`
 
 ## Workflow Runbook
@@ -256,10 +286,11 @@ Recommended:
 
 Production Terraform uses an S3 remote backend with DynamoDB locking.
 
-- Backend bucket pattern: `plane-cloud-platform-tfstate-<account-id>`
-- Lock table: `plane-cloud-platform-tf-locks`
+- Backend bucket pattern: `<TF_STATE_BUCKET_PREFIX>-<account-id>` unless `TF_STATE_BUCKET` is set
+- Backend key: `TF_STATE_KEY`
+- Lock table: `TF_LOCK_TABLE`
 
-Bootstrap resources are managed by `terraform/environments/bootstrap` and should be applied once per AWS account (via bootstrap workflow).
+The `terraform/environments/prod` backend block is intentionally partial. GitHub Actions passes backend bucket, key, region, encryption, and lock-table values during `terraform init`. Bootstrap resources are managed by `terraform/environments/bootstrap` and should be applied once per AWS account through the bootstrap workflow.
 
 For portability across fresh AWS accounts, the CI workflow also ensures
 `AWSServiceRoleForRDS` exists before Terraform runs.
@@ -271,7 +302,7 @@ Instead of pasting policy JSON in the AWS Console, sync the repo policy file dir
 Prerequisites:
 
 - AWS CLI installed
-- An admin-capable profile (example below uses `personal`)
+- An admin-capable profile
 - Existing role name: `github-actions-terraform-prod`
 
 Command:
@@ -281,7 +312,7 @@ aws iam put-role-policy `
   --role-name github-actions-terraform-prod `
   --policy-name terraform-prod-policy `
   --policy-document file://.github/iam/terraform-prod-policy.json `
-  --profile personal
+  --profile <profile>
 ```
 
 ```bash
@@ -289,7 +320,7 @@ aws iam put-role-policy \
   --role-name github-actions-terraform-prod \
   --policy-name terraform-prod-policy \
   --policy-document file://.github/iam/terraform-prod-policy.json \
-  --profile personal
+  --profile <profile>
 ```
 
 Verify:
@@ -298,14 +329,14 @@ Verify:
 aws iam get-role-policy `
   --role-name github-actions-terraform-prod `
   --policy-name terraform-prod-policy `
-  --profile personal
+  --profile <profile>
 ```
 
 ```bash
 aws iam get-role-policy \
   --role-name github-actions-terraform-prod \
   --policy-name terraform-prod-policy \
-  --profile personal
+  --profile <profile>
 ```
 
 When to run this:
@@ -332,59 +363,81 @@ Planned additions include:
 
 ## Zero-to-Deploy Guide
 
-Use this checklist to bring up the project from scratch in a new AWS account.
+Use this sequence for a fresh AWS account. The production workflow depends on the remote Terraform backend, so the bootstrap workflow must succeed before any production plan/apply can run.
 
-1. Create GitHub repository secrets
-   - Add `AWS_GITHUB_OIDC_ROLE_ARN` in repository secrets.
-   - Add optional `PLANE_S3_ENDPOINT_URL` only for custom S3-compatible endpoints; leave empty for AWS S3.
+1. Log in to AWS locally with an admin-capable identity.
 
-2. Configure AWS IAM/OIDC once (manual)
-   - Create GitHub OIDC identity provider (`token.actions.githubusercontent.com`) if missing.
-   - Create role `github-actions-terraform-prod` with trust policy for your repo/branch.
-   - Attach inline policy from `.github/iam/terraform-prod-policy.json`.
-   - Optional one-time bootstrap script:
-     - `chmod +x scripts/bootstrap-oidc.sh`
-     - `./scripts/bootstrap-oidc.sh --repo <OWNER/REPO> --branch main --profile personal`
-   - Sync policy with:
-     ```powershell
-     aws iam put-role-policy `
-       --role-name github-actions-terraform-prod `
-       --policy-name terraform-prod-policy `
-       --policy-document file://.github/iam/terraform-prod-policy.json `
-       --profile personal
-     ```
-     ```bash
-     aws iam put-role-policy \
-       --role-name github-actions-terraform-prod \
-       --policy-name terraform-prod-policy \
-       --policy-document file://.github/iam/terraform-prod-policy.json \
-       --profile personal
-     ```
+   ```bash
+   aws login
+   aws sts get-caller-identity
+   ```
 
-3. Run bootstrap once (manual trigger in GitHub Actions)
-   - Open workflow `Terraform Bootstrap`.
-   - Run with `action=apply`.
-   - This creates:
-     - `plane-cloud-platform-tfstate-<account-id>` (S3 backend bucket)
-     - `plane-cloud-platform-tf-locks` (DynamoDB lock table)
+   With a named profile:
 
-4. Run production workflow
-   - Open workflow `Terraform Prod`.
-   - Run `action=apply` (or push to `main` after PR flow).
-   - Pipeline order:
-     - Terraform init/validate/plan
-     - Terraform apply
-     - Helm upgrade/install for Plane (`--rollback-on-failure --wait --wait-for-jobs`) with Terraform outputs injected as Helm values
+   ```bash
+   aws sts get-caller-identity --profile <profile>
+   ```
 
-5. Verify cluster and app
-   - `kubectl get pods -n plane-dev`
-   - `kubectl get jobs -n plane-dev`
-   - `kubectl get pvc -n plane-dev`
-   - Ensure migration job is `Complete`, core pods are `Running/Ready`, PVCs are `Bound`.
+2. Create or update the GitHub OIDC role in AWS.
 
-6. Post-setup hardening (recommended)
-   - Restrict Plane IRSA role policy to exact bucket/prefix needs.
-   - Add secret rotation and operational runbook for S3/DB recovery.
+   ```bash
+   chmod +x scripts/bootstrap-oidc.sh
+   ./scripts/bootstrap-oidc.sh --repo <OWNER/REPO> --branch main --profile <profile>
+   ```
+
+   The script creates the GitHub OIDC provider if missing, creates or updates role `github-actions-terraform-prod`, and attaches `.github/iam/terraform-prod-policy.json`. Copy the printed role ARN.
+
+3. Configure GitHub repository settings.
+
+   Required secret:
+
+   - `AWS_GITHUB_OIDC_ROLE_ARN` = role ARN printed by `scripts/bootstrap-oidc.sh`
+
+   Optional variables:
+
+   - Set `AWS_REGION`, `PROJECT_NAME`, `ENVIRONMENT_NAME`, `HELM_RELEASE_NAME`, and `K8S_NAMESPACE` only when you want values other than the defaults.
+   - Set `PLANE_APP_HOST` if you have a real domain ready. Leave it unset to let CI adopt the generated ALB hostname automatically.
+   - Leave `TF_STATE_BUCKET` unset unless you need an exact backend bucket name. The default is `<TF_STATE_BUCKET_PREFIX>-<account-id>`.
+
+4. Run the backend bootstrap once.
+
+   In GitHub Actions, open workflow `Terraform Bootstrap` and run it manually with `action=apply`.
+
+   It creates:
+
+   - S3 state bucket: `<TF_STATE_BUCKET_PREFIX>-<account-id>` unless `TF_STATE_BUCKET` is set
+   - DynamoDB lock table: `TF_LOCK_TABLE`
+
+5. Validate production after bootstrap.
+
+   Open workflow `Terraform Prod` and run it manually with `action=plan`, or open a pull request that changes `terraform/**`, `helm/**`, or the workflow file. Before bootstrap exists, this plan cannot initialize the S3 backend.
+
+6. Deploy production.
+
+   Open workflow `Terraform Prod` and run it manually with `action=apply`, or merge a reviewed PR to `main`.
+
+   The apply job does the following:
+
+   - initializes Terraform with the bootstrapped S3/DynamoDB backend
+   - creates VPC, EKS, RDS PostgreSQL, Amazon MQ RabbitMQ, ElastiCache Redis, S3 doc-store, and IAM/IRSA resources
+   - installs cluster add-ons: metrics-server, AWS Load Balancer Controller, and Cluster Autoscaler
+   - reads Terraform outputs and AWS Secrets Manager values
+   - runs Helm upgrade/install for Plane with runtime DB/Redis/RabbitMQ/S3 values
+   - if `PLANE_APP_HOST` is unset, reads the generated ALB hostname and runs a second Helm upgrade using that hostname
+   - annotates the Plane service account with the S3 IRSA role and restarts Plane workloads
+
+7. Verify the deployment.
+
+   ```bash
+   aws eks update-kubeconfig --name <PROJECT_NAME>-<ENVIRONMENT_NAME>-eks --region <AWS_REGION>
+   kubectl get pods -n <K8S_NAMESPACE>
+   kubectl get jobs -n <K8S_NAMESPACE>
+   kubectl get ingress -n <K8S_NAMESPACE>
+   ```
+
+   Ensure the migration job is `Complete`, core pods are `Running/Ready`, and the ingress has an ALB hostname.
+
+8. If you later attach a real domain, set `PLANE_APP_HOST` in GitHub repository variables and rerun `Terraform Prod` with `action=apply`. Then point your DNS record at the ALB hostname shown by the ingress.
 
 ## Next Steps
 

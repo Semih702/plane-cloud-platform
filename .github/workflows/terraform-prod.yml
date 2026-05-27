@@ -28,13 +28,27 @@ on:
 
 env:
   TF_DIR: terraform/environments/prod
-  AWS_REGION: eu-west-1
-  EKS_CLUSTER_NAME: plane-prod-eks
-  HELM_RELEASE_NAME: plane-dev
-  K8S_NAMESPACE: plane-dev
+  AWS_REGION: ${{ vars.AWS_REGION || 'eu-west-1' }}
+  PROJECT_NAME: ${{ vars.PROJECT_NAME || 'plane' }}
+  ENVIRONMENT_NAME: ${{ vars.ENVIRONMENT_NAME || 'prod' }}
+  EKS_CLUSTER_NAME: ${{ format('{0}-{1}-eks', vars.PROJECT_NAME || 'plane', vars.ENVIRONMENT_NAME || 'prod') }}
+  HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME || format('{0}-{1}', vars.PROJECT_NAME || 'plane', vars.ENVIRONMENT_NAME || 'prod') }}
+  K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || format('{0}-{1}', vars.PROJECT_NAME || 'plane', vars.ENVIRONMENT_NAME || 'prod') }}
   HELM_CHART_DIR: helm/plane
-  HELM_VALUES_FILE: helm/plane/values/dev.yaml
-  PLANE_DOCSTORE_SECRET_NAME: plane-dev-doc-store-secrets
+  HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE || 'helm/plane/values/dev.yaml' }}
+  PLANE_APP_HOST: ${{ vars.PLANE_APP_HOST }}
+  PLANE_SERVICE_ACCOUNT_NAME: ${{ format('{0}-srv-account', vars.HELM_RELEASE_NAME || format('{0}-{1}', vars.PROJECT_NAME || 'plane', vars.ENVIRONMENT_NAME || 'prod')) }}
+  PLANE_DOCSTORE_SECRET_NAME: ${{ format('{0}-doc-store-secrets', vars.HELM_RELEASE_NAME || format('{0}-{1}', vars.PROJECT_NAME || 'plane', vars.ENVIRONMENT_NAME || 'prod')) }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+  TF_STATE_BUCKET_PREFIX: ${{ vars.TF_STATE_BUCKET_PREFIX || 'plane-cloud-platform-tfstate' }}
+  TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'prod/terraform.tfstate' }}
+  TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'plane-cloud-platform-tf-locks' }}
+  TF_VAR_aws_region: ${{ vars.AWS_REGION || 'eu-west-1' }}
+  TF_VAR_project_name: ${{ vars.PROJECT_NAME || 'plane' }}
+  TF_VAR_environment: ${{ vars.ENVIRONMENT_NAME || 'prod' }}
+  TF_VAR_plane_namespace: ${{ vars.K8S_NAMESPACE || format('{0}-{1}', vars.PROJECT_NAME || 'plane', vars.ENVIRONMENT_NAME || 'prod') }}
+  TF_VAR_plane_release_name: ${{ vars.HELM_RELEASE_NAME || format('{0}-{1}', vars.PROJECT_NAME || 'plane', vars.ENVIRONMENT_NAME || 'prod') }}
+  TF_VAR_plane_service_account_name: ${{ format('{0}-srv-account', vars.HELM_RELEASE_NAME || format('{0}-{1}', vars.PROJECT_NAME || 'plane', vars.ENVIRONMENT_NAME || 'prod')) }}
 
 concurrency:
   group: terraform-prod-main
@@ -87,9 +101,13 @@ jobs:
       - name: Terraform Init
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          STATE_BUCKET="${TF_STATE_BUCKET:-${TF_STATE_BUCKET_PREFIX}-${ACCOUNT_ID}}"
           terraform -chdir=${{ env.TF_DIR }} init -input=false \
-            -backend-config="bucket=plane-cloud-platform-tfstate-${ACCOUNT_ID}" \
-            -backend-config="dynamodb_table=plane-cloud-platform-tf-locks"
+            -backend-config="bucket=${STATE_BUCKET}" \
+            -backend-config="key=${{ env.TF_STATE_KEY }}" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE }}"
 
       - name: Terraform Validate
         run: terraform -chdir=${{ env.TF_DIR }} validate
@@ -158,9 +176,13 @@ jobs:
       - name: Terraform Init
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          STATE_BUCKET="${TF_STATE_BUCKET:-${TF_STATE_BUCKET_PREFIX}-${ACCOUNT_ID}}"
           terraform -chdir=${{ env.TF_DIR }} init -input=false \
-            -backend-config="bucket=plane-cloud-platform-tfstate-${ACCOUNT_ID}" \
-            -backend-config="dynamodb_table=plane-cloud-platform-tf-locks"
+            -backend-config="bucket=${STATE_BUCKET}" \
+            -backend-config="key=${{ env.TF_STATE_KEY }}" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE }}"
 
       - name: Terraform Apply
         run: terraform -chdir=${{ env.TF_DIR }} apply -input=false -auto-approve
@@ -456,11 +478,14 @@ jobs:
           PLANE_S3_ENDPOINT_URL: ${{ secrets.PLANE_S3_ENDPOINT_URL }}
         run: |
           S3_ENDPOINT_URL="${PLANE_S3_ENDPOINT_URL:-https://s3.${{ env.AWS_REGION }}.amazonaws.com}"
+          APP_HOST="${PLANE_APP_HOST:-bootstrap-${{ env.HELM_RELEASE_NAME }}.${{ env.K8S_NAMESPACE }}.invalid}"
 
           helm upgrade --install "${{ env.HELM_RELEASE_NAME }}" "${{ env.HELM_CHART_DIR }}" \
             --namespace "${{ env.K8S_NAMESPACE }}" \
             --values "${{ env.HELM_VALUES_FILE }}" \
             --values "${{ steps.plane_runtime_values.outputs.runtime_values_file }}" \
+            --set-string plane-ce.external_secrets.doc_store_existingSecret="${{ env.PLANE_DOCSTORE_SECRET_NAME }}" \
+            --set-string plane-ce.ingress.appHost="${APP_HOST}" \
             --set-string plane-ce.env.docstore_bucket="${{ steps.tf_outputs.outputs.plane_docstore_bucket_name }}" \
             --set-string plane-ce.env.aws_region="${{ env.AWS_REGION }}" \
             --set-string plane-ce.env.aws_s3_endpoint_url="${S3_ENDPOINT_URL}" \
@@ -469,9 +494,40 @@ jobs:
             --wait-for-jobs \
             --timeout 20m
 
+      - name: Adopt Generated ALB Host
+        if: env.PLANE_APP_HOST == ''
+        run: |
+          set -euo pipefail
+
+          ALB_HOST=""
+          for _ in {1..40}; do
+            ALB_HOST="$(kubectl get ingress "${{ env.HELM_RELEASE_NAME }}-ingress" \
+              -n "${{ env.K8S_NAMESPACE }}" \
+              -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+            if [ -n "${ALB_HOST}" ]; then
+              break
+            fi
+            sleep 15
+          done
+
+          if [ -z "${ALB_HOST}" ]; then
+            echo "Unable to resolve generated ALB hostname from ingress."
+            exit 1
+          fi
+
+          echo "No PLANE_APP_HOST repository variable set; using generated ALB host: ${ALB_HOST}"
+          helm upgrade "${{ env.HELM_RELEASE_NAME }}" "${{ env.HELM_CHART_DIR }}" \
+            --namespace "${{ env.K8S_NAMESPACE }}" \
+            --reuse-values \
+            --set-string plane-ce.ingress.appHost="${ALB_HOST}" \
+            --rollback-on-failure \
+            --wait \
+            --wait-for-jobs \
+            --timeout 20m
+
       - name: Annotate Plane Service Account (IRSA)
         run: |
-          kubectl annotate serviceaccount "${{ env.HELM_RELEASE_NAME }}-srv-account" \
+          kubectl annotate serviceaccount "${{ env.PLANE_SERVICE_ACCOUNT_NAME }}" \
             -n "${{ env.K8S_NAMESPACE }}" \
             eks.amazonaws.com/role-arn="${{ steps.tf_outputs.outputs.plane_irsa_role_arn }}" \
             --overwrite

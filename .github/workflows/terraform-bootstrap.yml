@@ -5,12 +5,16 @@ on:
     paths:
       - 'terraform/environments/bootstrap/**'
       - '.github/workflows/terraform-bootstrap.yml'
+      - '.github/iam/**'
+      - 'scripts/bootstrap-oidc.sh'
   push:
     branches:
       - main
     paths:
       - 'terraform/environments/bootstrap/**'
       - '.github/workflows/terraform-bootstrap.yml'
+      - '.github/iam/**'
+      - 'scripts/bootstrap-oidc.sh'
   workflow_dispatch:
     inputs:
       action:
@@ -24,7 +28,14 @@ on:
 
 env:
   TF_DIR: terraform/environments/bootstrap
-  AWS_REGION: eu-west-1
+  AWS_REGION: ${{ vars.AWS_REGION || 'eu-west-1' }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+  TF_STATE_BUCKET_PREFIX: ${{ vars.TF_STATE_BUCKET_PREFIX || 'plane-cloud-platform-tfstate' }}
+  TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE || 'plane-cloud-platform-tf-locks' }}
+  TF_VAR_aws_region: ${{ vars.AWS_REGION || 'eu-west-1' }}
+  TF_VAR_state_bucket_name: ${{ vars.TF_STATE_BUCKET }}
+  TF_VAR_state_bucket_prefix: ${{ vars.TF_STATE_BUCKET_PREFIX || 'plane-cloud-platform-tfstate' }}
+  TF_VAR_lock_table_name: ${{ vars.TF_LOCK_TABLE || 'plane-cloud-platform-tf-locks' }}
 
 permissions:
   id-token: write
