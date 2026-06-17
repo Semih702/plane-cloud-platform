@@ -9,4 +9,4 @@ appVersion: "1.0.0"
 dependencies:
   - name: plane-ce
     repository: https://helm.plane.so
-    version: "*"
+    version: "1.4.1"

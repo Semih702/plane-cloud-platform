@@ -1,0 +1,56 @@
+{{- $plane := index .Values "plane-ce" | default dict -}}
+{{- $env := $plane.env | default dict -}}
+{{- $postgres := $plane.postgres | default dict -}}
+{{- $redis := $plane.redis | default dict -}}
+{{- $rabbitmq := $plane.rabbitmq | default dict -}}
+{{- $minio := $plane.minio | default dict -}}
+
+{{- $postgresLocal := true -}}
+{{- if hasKey $postgres "local_setup" -}}
+{{- $postgresLocal = $postgres.local_setup -}}
+{{- end -}}
+{{- $redisLocal := true -}}
+{{- if hasKey $redis "local_setup" -}}
+{{- $redisLocal = $redis.local_setup -}}
+{{- end -}}
+{{- $rabbitmqLocal := true -}}
+{{- if hasKey $rabbitmq "local_setup" -}}
+{{- $rabbitmqLocal = $rabbitmq.local_setup -}}
+{{- end -}}
+{{- $minioLocal := true -}}
+{{- if hasKey $minio "local_setup" -}}
+{{- $minioLocal = $minio.local_setup -}}
+{{- end -}}
+
+{{- if and (not $postgresLocal) (empty $env.pgdb_remote_url) -}}
+{{- fail "plane-ce.env.pgdb_remote_url is required when plane-ce.postgres.local_setup=false. CI injects it from Terraform; local deploys must pass a runtime values file." -}}
+{{- end -}}
+{{- if and (not $redisLocal) (empty $env.remote_redis_url) -}}
+{{- fail "plane-ce.env.remote_redis_url is required when plane-ce.redis.local_setup=false. CI injects it from Terraform; local deploys must pass a runtime values file." -}}
+{{- end -}}
+{{- if and (not $rabbitmqLocal) (empty $rabbitmq.external_rabbitmq_url) -}}
+{{- fail "plane-ce.rabbitmq.external_rabbitmq_url is required when plane-ce.rabbitmq.local_setup=false. CI injects it from Terraform; local deploys must pass a runtime values file." -}}
+{{- end -}}
+{{- if and (not $minioLocal) (empty $env.docstore_bucket) -}}
+{{- fail "plane-ce.env.docstore_bucket is required when plane-ce.minio.local_setup=false. CI injects it from Terraform; local deploys must pass a runtime values file." -}}
+{{- end -}}
+{{- if and $postgresLocal (or (empty $env.pgdb_password) (eq $env.pgdb_password "plane")) -}}
+{{- fail "plane-ce.env.pgdb_password must be set to a non-default value when plane-ce.postgres.local_setup=true." -}}
+{{- end -}}
+{{- if and $rabbitmqLocal (or (empty $rabbitmq.default_password) (eq $rabbitmq.default_password "plane")) -}}
+{{- fail "plane-ce.rabbitmq.default_password must be set to a non-default value when plane-ce.rabbitmq.local_setup=true." -}}
+{{- end -}}
+{{- if and $minioLocal (or (empty $minio.root_password) (eq $minio.root_password "password")) -}}
+{{- fail "plane-ce.minio.root_password must be set to a non-default value when plane-ce.minio.local_setup=true." -}}
+{{- end -}}
+
+{{- $upstreamSecretKey := "60gp0byfz2dvffa45cxl20p1scy9xbpf6d8c5y0geejgkyp1b5" -}}
+{{- $upstreamLiveSecretKey := "htbqvBJAgpm9bzvf3r4urJer0ENReatceh" -}}
+{{- $secretKey := default "" $env.secret_key -}}
+{{- $liveSecretKey := default "" $env.live_server_secret_key -}}
+{{- if or (empty $secretKey) (eq $secretKey $upstreamSecretKey) -}}
+{{- fail "plane-ce.env.secret_key must be set to a stable random value. CI injects it from Terraform; local deploys must pass a runtime values file." -}}
+{{- end -}}
+{{- if or (empty $liveSecretKey) (eq $liveSecretKey $upstreamLiveSecretKey) -}}
+{{- fail "plane-ce.env.live_server_secret_key must be set to a stable random value. CI injects it from Terraform; local deploys must pass a runtime values file." -}}
+{{- end -}}

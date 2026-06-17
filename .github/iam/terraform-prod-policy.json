@@ -19,6 +19,7 @@
         "secretsmanager:Describe*",
         "secretsmanager:GetResourcePolicy",
         "autoscaling:Describe*",
+        "sts:GetCallerIdentity",
         "s3:Get*",
         "s3:List*",
         "dynamodb:DescribeTable",
@@ -53,6 +54,15 @@
         "ec2:ReleaseAddress",
         "ec2:CreateNatGateway",
         "ec2:DeleteNatGateway",
+        "ec2:CreateNetworkInterface",
+        "ec2:DeleteNetworkInterface",
+        "ec2:CreateNetworkInterfacePermission",
+        "ec2:DeleteNetworkInterfacePermission",
+        "ec2:DetachNetworkInterface",
+        "ec2:ModifyNetworkInterfaceAttribute",
+        "ec2:CreateVpcEndpoint",
+        "ec2:DeleteVpcEndpoints",
+        "ec2:ModifyVpcEndpoint",
         "ec2:CreateSecurityGroup",
         "ec2:DeleteSecurityGroup",
         "ec2:AuthorizeSecurityGroupIngress",
@@ -81,6 +91,7 @@
         "eks:UntagResource",
         "iam:CreateRole",
         "iam:DeleteRole",
+        "iam:UpdateAssumeRolePolicy",
         "iam:TagRole",
         "iam:UntagRole",
         "iam:CreatePolicy",
@@ -127,7 +138,8 @@
         "dynamodb:GetItem",
         "dynamodb:PutItem",
         "dynamodb:DeleteItem",
-        "dynamodb:UpdateItem"
+        "dynamodb:UpdateItem",
+        "route53:AssociateVPCWithHostedZone"
       ],
       "Resource": "*"
     },
@@ -140,8 +152,6 @@
       "Resource": "*",
       "Condition": {
         "StringEquals": {
-          "aws:RequestTag/Project": "plane",
-          "aws:RequestTag/Environment": "prod",
           "aws:RequestTag/ManagedBy": "terraform"
         }
       }
@@ -154,15 +164,13 @@
         "mq:UpdateBroker",
         "mq:RebootBroker",
         "mq:CreateTags",
-        "mq:RemoveTags"
+        "mq:DeleteTags"
       ],
       "Resource": [
-        "arn:aws:mq:eu-west-1:925606812216:broker:plane-prod-rabbitmq:*"
+        "arn:aws:mq:*:*:broker:*-rabbitmq:*"
       ],
       "Condition": {
         "StringEquals": {
-          "aws:ResourceTag/Project": "plane",
-          "aws:ResourceTag/Environment": "prod",
           "aws:ResourceTag/ManagedBy": "terraform"
         }
       }
@@ -176,8 +184,6 @@
       "Resource": "*",
       "Condition": {
         "StringEquals": {
-          "aws:RequestTag/Project": "plane",
-          "aws:RequestTag/Environment": "prod",
           "aws:RequestTag/ManagedBy": "terraform"
         }
       }
@@ -205,13 +211,11 @@
         "elasticache:RemoveTagsFromResource"
       ],
       "Resource": [
-        "arn:aws:elasticache:eu-west-1:925606812216:subnetgroup:plane-prod-redis-subnet-group",
-        "arn:aws:elasticache:eu-west-1:925606812216:replicationgroup:plane-prod-redis"
+        "arn:aws:elasticache:*:*:subnetgroup:*-redis-subnet-group",
+        "arn:aws:elasticache:*:*:replicationgroup:*-redis"
       ],
       "Condition": {
         "StringEquals": {
-          "aws:ResourceTag/Project": "plane",
-          "aws:ResourceTag/Environment": "prod",
           "aws:ResourceTag/ManagedBy": "terraform"
         }
       }
@@ -221,24 +225,13 @@
       "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": [
-        "arn:aws:iam::925606812216:role/plane-prod-eks-cluster-role",
-        "arn:aws:iam::925606812216:role/plane-prod-eks-node-role",
-        "arn:aws:iam::925606812216:role/plane-prod-eks-ebs-csi-role"
+        "arn:aws:iam::*:role/*-eks-cluster-role",
+        "arn:aws:iam::*:role/*-eks-node-role",
+        "arn:aws:iam::*:role/*-eks-ebs-csi-role"
       ],
       "Condition": {
         "StringEquals": {
           "iam:PassedToService": "eks.amazonaws.com"
-        }
-      }
-    },
-    {
-      "Sid": "AllowCreateRdsServiceLinkedRole",
-      "Effect": "Allow",
-      "Action": "iam:CreateServiceLinkedRole",
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "iam:AWSServiceName": "rds.amazonaws.com"
         }
       }
     },
@@ -253,6 +246,17 @@
             "eks.amazonaws.com",
             "eks-nodegroup.amazonaws.com"
           ]
+        }
+      }
+    },
+    {
+      "Sid": "AllowCreateRdsServiceLinkedRole",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "iam:AWSServiceName": "rds.amazonaws.com"
         }
       }
     },

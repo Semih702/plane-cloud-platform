@@ -1,5 +1,5 @@
 locals {
-  resolved_password = coalesce(var.password, random_password.user[0].result)
+  resolved_password = var.password != null ? var.password : random_password.user[0].result
   is_multi_az_mode  = var.deployment_mode == "CLUSTER_MULTI_AZ"
   credentials_secret_name_prefix = coalesce(
     var.credentials_secret_name_prefix,

@@ -1,5 +1,5 @@
 locals {
-  resolved_auth_token = coalesce(var.auth_token, random_password.auth_token[0].result)
+  resolved_auth_token = var.auth_token != null ? var.auth_token : random_password.auth_token[0].result
   credentials_secret_name_prefix = coalesce(
     var.credentials_secret_name_prefix,
     "${var.name}/credentials-"

@@ -12,3 +12,6 @@ crash.log
 # local runtime overrides with sensitive connection URLs
 helm/plane/values/dev.runtime.local.yaml
 
+# local/private artifacts
+*.pdf
+

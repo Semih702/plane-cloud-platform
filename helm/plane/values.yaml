@@ -30,4 +30,9 @@ autoscaling:
     minReplicas: 1
     maxReplicas: 2
 
+ingress:
+  enabled: true
+  ingressClass: alb
+  annotations: {}
+
 plane-ce: {}

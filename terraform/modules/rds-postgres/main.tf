@@ -1,5 +1,5 @@
 locals {
-  resolved_master_password = coalesce(var.master_password, random_password.master[0].result)
+  resolved_master_password = var.master_password != null ? var.master_password : random_password.master[0].result
 }
 
 resource "random_password" "master" {
@@ -62,7 +62,7 @@ resource "aws_db_instance" "this" {
   deletion_protection          = var.deletion_protection
   skip_final_snapshot          = var.skip_final_snapshot
   auto_minor_version_upgrade   = true
-  performance_insights_enabled = true
+  performance_insights_enabled = var.performance_insights_enabled
   storage_encrypted            = true
   apply_immediately            = false
 
