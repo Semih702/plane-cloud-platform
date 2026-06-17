@@ -16,6 +16,42 @@ variable "environment" {
   default     = "prod"
 }
 
+variable "create_eks_cluster" {
+  description = "Create a dedicated EKS cluster and VPC for Plane. Set false to deploy into an existing EKS cluster."
+  type        = bool
+  default     = true
+}
+
+variable "existing_eks_cluster_name" {
+  description = "Existing EKS cluster name used when create_eks_cluster is false."
+  type        = string
+  default     = ""
+}
+
+variable "existing_vpc_id" {
+  description = "Existing VPC ID used for AWS-managed data services when create_eks_cluster is false."
+  type        = string
+  default     = ""
+}
+
+variable "existing_private_subnet_ids" {
+  description = "Existing private subnet IDs used for AWS-managed data services when create_eks_cluster is false."
+  type        = list(string)
+  default     = []
+}
+
+variable "existing_vpc_cidr" {
+  description = "Existing VPC CIDR used as the default allowed CIDR for AWS-managed data services when create_eks_cluster is false."
+  type        = string
+  default     = ""
+}
+
+variable "existing_eks_oidc_provider_arn" {
+  description = "Optional IAM OIDC provider ARN for the existing EKS cluster. When empty, Terraform derives it from the cluster OIDC issuer and account ID."
+  type        = string
+  default     = ""
+}
+
 variable "postgres_mode" {
   description = "PostgreSQL deployment mode: aws-managed creates RDS, in-cluster uses the Plane chart PostgreSQL, external expects PLANE_PGDB_REMOTE_URL."
   type        = string

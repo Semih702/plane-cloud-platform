@@ -12,7 +12,7 @@ The goal is to let one operator deploy Plane into their own AWS account using Gi
 4. Run the bootstrap workflow.
 5. Run the production workflow.
 
-The default path provisions AWS-managed infrastructure, while advanced users can switch individual dependencies to in-cluster or external services.
+The default path provisions a dedicated EKS cluster and AWS-managed infrastructure, while advanced users can deploy into an existing EKS cluster or switch individual dependencies to in-cluster or external services.
 
 ## Why This Helps Plane
 
@@ -24,6 +24,7 @@ This kit is designed to be:
 - Secret conscious: the default path uses GitHub OIDC, not long-lived AWS access keys.
 - Reviewable: pull request CI is secret-free and deployment workflows are manual.
 - Configurable: PostgreSQL, Redis, RabbitMQ, and object storage can be AWS-managed, in-cluster, or external.
+- Cost-aware: teams with an existing platform EKS cluster can avoid another EKS control-plane charge by deploying Plane into a dedicated namespace.
 - Operationally explicit: IAM, service modes, and runbook behavior are documented.
 
 ## What The Kit Deploys
@@ -48,6 +49,8 @@ The production workflow then installs:
 - Plane CE through the wrapper Helm chart
 - ALB ingress, with a hostless first-deploy option
 
+For organizations that already operate EKS, `CREATE_EKS_CLUSTER=false` skips VPC, EKS, managed node group, and autoscaler ownership. The workflow deploys Plane into the supplied cluster namespace and leaves shared cluster add-ons such as Karpenter, Cluster Autoscaler, and ingress controllers under the platform team's control.
+
 ## Configuration Model
 
 The default deployment uses managed AWS services. Operators can override service modes with repository variables:
@@ -58,6 +61,8 @@ The default deployment uses managed AWS services. Operators can override service
 - `OBJECT_STORE_MODE=s3-managed|minio-in-cluster|external-s3`
 
 External modes read explicitly configured GitHub secrets for existing service URLs or S3-compatible credentials. In-cluster modes use generated credentials stored in AWS Secrets Manager and injected at deploy time.
+
+Cluster ownership is controlled separately with `CREATE_EKS_CLUSTER=true|false`. The default remains `true` for the simplest one-person deploy, while existing-cluster mode reduces duplicate infrastructure for teams that already have an EKS platform.
 
 ## Security And Workflow Design
 
@@ -99,6 +104,7 @@ The remaining validation needed before publishing as an official Plane-maintaine
 
 - Should this target Plane CE only, or leave room for other Plane editions later?
 - Should AWS-managed remain the default profile?
+- Should dedicated EKS remain the default, with existing-cluster mode documented as the cost-saving enterprise path?
 - Are in-cluster dependency modes useful enough to keep in the first version?
 - Should this repository vendor the Plane chart archive or rely only on `helm dependency build` from `Chart.lock`?
 - What IAM boundary is acceptable for a first-deploy kit?

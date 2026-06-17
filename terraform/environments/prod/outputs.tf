@@ -1,61 +1,61 @@
 output "vpc_id" {
-  description = "Created VPC ID"
-  value       = module.vpc.vpc_id
+  description = "VPC ID used by this deployment"
+  value       = local.active_vpc_id
 }
 
 output "availability_zones" {
-  description = "Availability zones selected for this VPC"
-  value       = module.vpc.availability_zones
+  description = "Availability zones selected for the created VPC, or empty when using an existing cluster"
+  value       = var.create_eks_cluster ? module.vpc[0].availability_zones : []
 }
 
 output "public_subnet_ids" {
-  description = "Public subnet IDs in AZ order"
-  value       = module.vpc.public_subnet_ids
+  description = "Public subnet IDs in AZ order, or empty when using an existing cluster"
+  value       = var.create_eks_cluster ? module.vpc[0].public_subnet_ids : []
 }
 
 output "private_subnet_ids" {
-  description = "Private subnet IDs in AZ order"
-  value       = module.vpc.private_subnet_ids
+  description = "Private subnet IDs used by this deployment"
+  value       = local.active_private_subnet_ids
 }
 
 output "nat_gateway_ids" {
-  description = "NAT gateway IDs in AZ order"
-  value       = module.vpc.nat_gateway_ids
+  description = "NAT gateway IDs in AZ order, or empty when using an existing cluster"
+  value       = var.create_eks_cluster ? module.vpc[0].nat_gateway_ids : []
 }
 
 output "eks_cluster_name" {
   description = "EKS cluster name"
-  value       = module.eks.cluster_name
+  value       = local.cluster_name
 }
 
 output "eks_cluster_arn" {
   description = "EKS cluster ARN"
-  value       = module.eks.cluster_arn
+  value       = var.create_eks_cluster ? module.eks[0].cluster_arn : data.aws_eks_cluster.existing[0].arn
 }
 
 output "eks_cluster_endpoint" {
   description = "EKS API server endpoint"
-  value       = module.eks.cluster_endpoint
+  value       = var.create_eks_cluster ? module.eks[0].cluster_endpoint : data.aws_eks_cluster.existing[0].endpoint
 }
 
 output "eks_cluster_security_group_id" {
   description = "EKS cluster managed security group ID"
-  value       = module.eks.cluster_security_group_id
+  value       = var.create_eks_cluster ? module.eks[0].cluster_security_group_id : data.aws_eks_cluster.existing[0].vpc_config[0].cluster_security_group_id
 }
 
 output "eks_node_group_name" {
-  description = "EKS managed node group name"
-  value       = module.eks.node_group_name
+  description = "EKS managed node group name created by this kit, or empty when using an existing cluster"
+  value       = var.create_eks_cluster ? module.eks[0].node_group_name : ""
 }
 
 output "eks_aws_load_balancer_controller_irsa_role_arn" {
-  description = "IRSA role ARN for aws-load-balancer-controller"
-  value       = module.eks.aws_load_balancer_controller_irsa_role_arn
+  description = "IRSA role ARN for aws-load-balancer-controller created by this kit, or null when using an existing cluster"
+  value       = var.create_eks_cluster ? module.eks[0].aws_load_balancer_controller_irsa_role_arn : null
 }
 
 output "eks_cluster_autoscaler_irsa_role_arn" {
-  description = "IRSA role ARN for cluster-autoscaler"
-  value       = module.eks.cluster_autoscaler_irsa_role_arn
+  description = "IRSA role ARN for cluster-autoscaler created by this kit, or null when using an existing cluster"
+  value       = var.create_eks_cluster ? module.eks[0].cluster_autoscaler_irsa_role_arn : null
 }
 
 output "rds_instance_identifier" {

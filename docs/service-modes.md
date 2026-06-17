@@ -2,6 +2,8 @@
 
 The default deployment uses AWS-managed dependencies. Advanced users can move one or more dependencies in-cluster or point Plane at existing external services.
 
+Service modes are independent from cluster ownership. The default cluster path creates a dedicated EKS cluster; [existing-cluster mode](existing-cluster.md) deploys Plane into a supplied EKS cluster while keeping the same service-mode choices.
+
 ## Mode Variables
 
 Set these as GitHub repository variables.
@@ -34,6 +36,10 @@ Use this for lower-cost test environments or when you want Kubernetes StatefulSe
 - `OBJECT_STORE_MODE=minio-in-cluster`
 
 The workflow still creates EKS and stores generated runtime credentials in AWS Secrets Manager, but it does not create RDS, ElastiCache, Amazon MQ, or the Plane S3 bucket for the services switched to in-cluster mode.
+
+If `CREATE_EKS_CLUSTER=false`, the workflow uses the existing EKS cluster instead of creating a new one.
+
+In-cluster services need a working Kubernetes StorageClass. Dedicated-cluster mode uses `STORAGE_CLASS_NAME` with a default of `gp3-csi`; existing-cluster mode can use the cluster default StorageClass or an explicit `PLANE_STORAGE_CLASS_NAME`.
 
 ## External
 

@@ -19,9 +19,25 @@ env:
   TF_STATE_BUCKET_PREFIX: ${{ vars.TF_STATE_BUCKET_PREFIX || 'plane-cloud-platform-tfstate' }}
   TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'prod/terraform.tfstate' }}
   TF_LOCK_TABLE_NAME: ${{ vars.TF_LOCK_TABLE_NAME || 'plane-cloud-platform-tf-locks' }}
+  CREATE_EKS_CLUSTER: ${{ vars.CREATE_EKS_CLUSTER || 'true' }}
+  INSTALL_METRICS_SERVER: ${{ vars.INSTALL_METRICS_SERVER || 'auto' }}
+  INSTALL_AWS_LOAD_BALANCER_CONTROLLER: ${{ vars.INSTALL_AWS_LOAD_BALANCER_CONTROLLER || 'auto' }}
+  INSTALL_CLUSTER_AUTOSCALER: ${{ vars.INSTALL_CLUSTER_AUTOSCALER || 'auto' }}
+  CREATE_K8S_NAMESPACE: ${{ vars.CREATE_K8S_NAMESPACE || 'auto' }}
+  CREATE_STORAGE_CLASS: ${{ vars.CREATE_STORAGE_CLASS || 'auto' }}
+  STORAGE_CLASS_NAME: ${{ vars.STORAGE_CLASS_NAME || 'gp3-csi' }}
+  PLANE_STORAGE_CLASS_NAME: ${{ vars.PLANE_STORAGE_CLASS_NAME || '' }}
+  INGRESS_ENABLED: ${{ vars.INGRESS_ENABLED || 'true' }}
+  INGRESS_CLASS_NAME: ${{ vars.INGRESS_CLASS_NAME || 'alb' }}
   TF_VAR_aws_region: ${{ vars.AWS_REGION || 'eu-west-1' }}
   TF_VAR_project_name: ${{ vars.PROJECT_NAME || 'plane' }}
   TF_VAR_environment: ${{ vars.DEPLOY_ENVIRONMENT || 'prod' }}
+  TF_VAR_create_eks_cluster: ${{ vars.CREATE_EKS_CLUSTER || 'true' }}
+  TF_VAR_existing_eks_cluster_name: ${{ vars.EXISTING_EKS_CLUSTER_NAME || '' }}
+  TF_VAR_existing_vpc_id: ${{ vars.EXISTING_VPC_ID || '' }}
+  TF_VAR_existing_private_subnet_ids: ${{ vars.EXISTING_PRIVATE_SUBNET_IDS_JSON || '[]' }}
+  TF_VAR_existing_vpc_cidr: ${{ vars.EXISTING_VPC_CIDR || '' }}
+  TF_VAR_existing_eks_oidc_provider_arn: ${{ vars.EXISTING_EKS_OIDC_PROVIDER_ARN || '' }}
   TF_VAR_postgres_mode: ${{ vars.POSTGRES_MODE || 'aws-managed' }}
   TF_VAR_redis_mode: ${{ vars.REDIS_MODE || 'aws-managed' }}
   TF_VAR_rabbitmq_mode: ${{ vars.RABBITMQ_MODE || 'aws-managed' }}
@@ -33,7 +49,7 @@ env:
   REDIS_MODE: ${{ vars.REDIS_MODE || 'aws-managed' }}
   RABBITMQ_MODE: ${{ vars.RABBITMQ_MODE || 'aws-managed' }}
   OBJECT_STORE_MODE: ${{ vars.OBJECT_STORE_MODE || 's3-managed' }}
-  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || format('{0}-{1}-eks', vars.PROJECT_NAME || 'plane', vars.DEPLOY_ENVIRONMENT || 'prod') }}
+  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || vars.EXISTING_EKS_CLUSTER_NAME || format('{0}-{1}-eks', vars.PROJECT_NAME || 'plane', vars.DEPLOY_ENVIRONMENT || 'prod') }}
   HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME || 'plane' }}
   K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'plane' }}
   PLANE_SERVICE_ACCOUNT_NAME: ${{ format('{0}-srv-account', vars.HELM_RELEASE_NAME || 'plane') }}
@@ -167,10 +183,13 @@ jobs:
       - name: Ensure AWS Service-Linked Roles
         run: |
           set -euo pipefail
-          services=(
-            "eks.amazonaws.com:AWSServiceRoleForAmazonEKS"
-            "eks-nodegroup.amazonaws.com:AWSServiceRoleForAmazonEKSNodegroup"
-          )
+          services=()
+          if [ "${CREATE_EKS_CLUSTER}" = "true" ]; then
+            services+=(
+              "eks.amazonaws.com:AWSServiceRoleForAmazonEKS"
+              "eks-nodegroup.amazonaws.com:AWSServiceRoleForAmazonEKSNodegroup"
+            )
+          fi
           if [ "${POSTGRES_MODE}" = "aws-managed" ]; then
             services+=("rds.amazonaws.com:AWSServiceRoleForRDS")
           fi
@@ -215,6 +234,7 @@ jobs:
           helm dependency build "${{ env.HELM_CHART_DIR }}"
 
       - name: Ensure namespace exists
+        if: (env.CREATE_EKS_CLUSTER == 'true' && env.CREATE_K8S_NAMESPACE != 'false') || env.CREATE_K8S_NAMESPACE == 'true'
         run: kubectl get namespace "${{ env.K8S_NAMESPACE }}" || kubectl create namespace "${{ env.K8S_NAMESPACE }}"
 
       - name: Read Terraform Outputs
@@ -245,10 +265,29 @@ jobs:
             terraform -chdir=${{ env.TF_DIR }} output -raw "$name" 2>/dev/null || true
           }
 
-          VPC_ID="$(terraform -chdir=${{ env.TF_DIR }} output -raw vpc_id)"
-          NODE_GROUP_NAME="$(terraform -chdir=${{ env.TF_DIR }} output -raw eks_node_group_name)"
+          SHOULD_INSTALL_AWS_LBC="false"
+          SHOULD_INSTALL_CLUSTER_AUTOSCALER="false"
+
+          if [ "${CREATE_EKS_CLUSTER}" = "true" ] && [ "${INSTALL_AWS_LOAD_BALANCER_CONTROLLER}" != "false" ]; then
+            SHOULD_INSTALL_AWS_LBC="true"
+          elif [ "${INSTALL_AWS_LOAD_BALANCER_CONTROLLER}" = "true" ]; then
+            echo "INSTALL_AWS_LOAD_BALANCER_CONTROLLER=true is only supported when CREATE_EKS_CLUSTER=true."
+            echo "For existing clusters, manage cluster-level ingress controllers outside this workflow."
+            exit 1
+          fi
+
+          if [ "${CREATE_EKS_CLUSTER}" = "true" ] && [ "${INSTALL_CLUSTER_AUTOSCALER}" != "false" ]; then
+            SHOULD_INSTALL_CLUSTER_AUTOSCALER="true"
+          elif [ "${INSTALL_CLUSTER_AUTOSCALER}" = "true" ]; then
+            echo "INSTALL_CLUSTER_AUTOSCALER=true is only supported when CREATE_EKS_CLUSTER=true."
+            echo "For existing clusters, keep autoscaling ownership with the platform cluster."
+            exit 1
+          fi
+
+          VPC_ID="$(output_raw_or_empty vpc_id)"
+          NODE_GROUP_NAME="$(output_raw_or_empty eks_node_group_name)"
           PLANE_APP_SECRET_ARN="$(terraform -chdir=${{ env.TF_DIR }} output -raw plane_app_secret_arn)"
-          AWS_LBC_IRSA_ROLE_ARN="$(terraform -chdir=${{ env.TF_DIR }} output -raw eks_aws_load_balancer_controller_irsa_role_arn)"
+          AWS_LBC_IRSA_ROLE_ARN="$(output_raw_or_empty eks_aws_load_balancer_controller_irsa_role_arn)"
           CLUSTER_AUTOSCALER_IRSA_ROLE_ARN="$(output_raw_or_empty eks_cluster_autoscaler_irsa_role_arn)"
           DOCSTORE_BUCKET=""
           PLANE_IRSA_ROLE_ARN=""
@@ -256,17 +295,22 @@ jobs:
           RABBITMQ_SECRET_ARN=""
           REDIS_SECRET_ARN=""
 
-          if [ -z "$CLUSTER_AUTOSCALER_IRSA_ROLE_ARN" ]; then
+          if [ "${SHOULD_INSTALL_CLUSTER_AUTOSCALER}" = "true" ] && [ -z "$CLUSTER_AUTOSCALER_IRSA_ROLE_ARN" ]; then
             ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
             CLUSTER_AUTOSCALER_IRSA_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${{ env.EKS_CLUSTER_NAME }}-cluster-autoscaler-role"
             echo "eks_cluster_autoscaler_irsa_role_arn output not found in state; using fallback ARN: ${CLUSTER_AUTOSCALER_IRSA_ROLE_ARN}"
           fi
 
-          require_nonempty "vpc_id" "$VPC_ID"
-          require_nonempty "eks_node_group_name" "$NODE_GROUP_NAME"
           require_nonempty "plane_app_secret_arn" "$PLANE_APP_SECRET_ARN"
-          require_iam_role_arn "eks_aws_load_balancer_controller_irsa_role_arn" "$AWS_LBC_IRSA_ROLE_ARN"
-          require_iam_role_arn "eks_cluster_autoscaler_irsa_role_arn" "$CLUSTER_AUTOSCALER_IRSA_ROLE_ARN"
+
+          if [ "${SHOULD_INSTALL_AWS_LBC}" = "true" ]; then
+            require_nonempty "vpc_id" "$VPC_ID"
+            require_iam_role_arn "eks_aws_load_balancer_controller_irsa_role_arn" "$AWS_LBC_IRSA_ROLE_ARN"
+          fi
+          if [ "${SHOULD_INSTALL_CLUSTER_AUTOSCALER}" = "true" ]; then
+            require_nonempty "eks_node_group_name" "$NODE_GROUP_NAME"
+            require_iam_role_arn "eks_cluster_autoscaler_irsa_role_arn" "$CLUSTER_AUTOSCALER_IRSA_ROLE_ARN"
+          fi
 
           if [ "${POSTGRES_MODE}" = "aws-managed" ]; then
             RDS_SECRET_ARN="$(terraform -chdir=${{ env.TF_DIR }} output -raw rds_credentials_secret_arn)"
@@ -299,6 +343,7 @@ jobs:
           echo "cluster_autoscaler_irsa_role_arn=$CLUSTER_AUTOSCALER_IRSA_ROLE_ARN" >> "$GITHUB_OUTPUT"
 
       - name: Verify Cluster Autoscaler IRSA Role Exists
+        if: env.CREATE_EKS_CLUSTER == 'true' && env.INSTALL_CLUSTER_AUTOSCALER != 'false' && steps.tf_outputs.outputs.cluster_autoscaler_irsa_role_arn != ''
         run: |
           set -euo pipefail
           ROLE_ARN="${{ steps.tf_outputs.outputs.cluster_autoscaler_irsa_role_arn }}"
@@ -307,7 +352,7 @@ jobs:
 
       - name: Resolve Node Group ASG For Cluster Autoscaler
         id: nodegroup_scaling
-        if: steps.tf_outputs.outputs.cluster_autoscaler_irsa_role_arn != ''
+        if: env.CREATE_EKS_CLUSTER == 'true' && env.INSTALL_CLUSTER_AUTOSCALER != 'false' && steps.tf_outputs.outputs.cluster_autoscaler_irsa_role_arn != ''
         run: |
           set -euo pipefail
           NODEGROUP_NAME="${{ steps.tf_outputs.outputs.eks_node_group_name }}"
@@ -342,6 +387,7 @@ jobs:
           echo "max_size=${MAX_SIZE}" >> "$GITHUB_OUTPUT"
 
       - name: Install/Upgrade Metrics Server
+        if: (env.CREATE_EKS_CLUSTER == 'true' && env.INSTALL_METRICS_SERVER != 'false') || env.INSTALL_METRICS_SERVER == 'true'
         run: |
           helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
           helm repo update
@@ -353,6 +399,7 @@ jobs:
           kubectl rollout status deployment/metrics-server -n kube-system --timeout=5m
 
       - name: Install/Upgrade AWS Load Balancer Controller
+        if: env.CREATE_EKS_CLUSTER == 'true' && env.INSTALL_AWS_LOAD_BALANCER_CONTROLLER != 'false' && steps.tf_outputs.outputs.aws_load_balancer_controller_irsa_role_arn != ''
         run: |
           helm repo add eks https://aws.github.io/eks-charts
           helm repo update
@@ -371,6 +418,7 @@ jobs:
           kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --timeout=5m
 
       - name: Ensure AWS LB Webhook CA Bundle Is Synced
+        if: env.CREATE_EKS_CLUSTER == 'true' && env.INSTALL_AWS_LOAD_BALANCER_CONTROLLER != 'false' && steps.tf_outputs.outputs.aws_load_balancer_controller_irsa_role_arn != ''
         run: |
           set -euo pipefail
 
@@ -391,7 +439,7 @@ jobs:
             | kubectl apply -f -
 
       - name: Install/Upgrade Cluster Autoscaler
-        if: steps.tf_outputs.outputs.cluster_autoscaler_irsa_role_arn != ''
+        if: env.CREATE_EKS_CLUSTER == 'true' && env.INSTALL_CLUSTER_AUTOSCALER != 'false' && steps.tf_outputs.outputs.cluster_autoscaler_irsa_role_arn != ''
         run: |
           set -euo pipefail
           helm repo add autoscaler https://kubernetes.github.io/autoscaler
@@ -679,9 +727,34 @@ jobs:
         run: |
           set -euo pipefail
 
+          storage_class_create="true"
+          if [ "${CREATE_STORAGE_CLASS}" = "false" ]; then
+            storage_class_create="false"
+          elif [ "${CREATE_EKS_CLUSTER}" != "true" ] && [ "${CREATE_STORAGE_CLASS}" != "true" ]; then
+            storage_class_create="false"
+          fi
+
+          plane_storage_class_name="${PLANE_STORAGE_CLASS_NAME}"
+          if [ -z "${plane_storage_class_name}" ] && [ "${storage_class_create}" = "true" ]; then
+            plane_storage_class_name="${STORAGE_CLASS_NAME}"
+          fi
+
           helm_set_args=(
+            --set "storageClass.create=${storage_class_create}"
+            --set-string "storageClass.name=${STORAGE_CLASS_NAME}"
+            --set "ingress.enabled=${INGRESS_ENABLED}"
+            --set-string "ingress.ingressClass=${INGRESS_CLASS_NAME}"
             --set-string "plane-ce.external_secrets.doc_store_existingSecret=${{ env.PLANE_DOCSTORE_SECRET_NAME }}"
           )
+
+          if [ -n "${plane_storage_class_name}" ]; then
+            helm_set_args+=(
+              --set-string "plane-ce.postgres.storageClass=${plane_storage_class_name}"
+              --set-string "plane-ce.redis.storageClass=${plane_storage_class_name}"
+              --set-string "plane-ce.rabbitmq.storageClass=${plane_storage_class_name}"
+              --set-string "plane-ce.minio.storageClass=${plane_storage_class_name}"
+            )
+          fi
 
           if [ -n "${{ env.PLANE_APP_HOST }}" ]; then
             helm_set_args+=(--set-string "plane-ce.ingress.appHost=${{ env.PLANE_APP_HOST }}")

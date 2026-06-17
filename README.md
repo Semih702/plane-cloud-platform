@@ -29,6 +29,8 @@ Helm installs:
 - AWS Load Balancer Controller-backed ALB ingress
 - metrics-server and Cluster Autoscaler
 
+This dedicated-cluster path is the default. Organizations that already have a platform EKS cluster can set `CREATE_EKS_CLUSTER=false` and deploy Plane into that cluster instead.
+
 ## Workflows
 
 - `CI`: runs on pull requests and pushes to `main`; it does not request AWS credentials or GitHub secrets.
@@ -57,6 +59,28 @@ The defaults work for the standard AWS-managed path.
 - `HELM_RELEASE_NAME`: default `plane`
 - `K8S_NAMESPACE`: default `plane`
 - `PLANE_APP_HOST`: optional custom host; when empty, the ALB DNS name is usable after deploy
+- `CREATE_EKS_CLUSTER`: default `true`; set `false` to deploy into an existing EKS cluster
+- `INGRESS_CLASS_NAME`: default `alb`
+- `INGRESS_ENABLED`: default `true`
+- `STORAGE_CLASS_NAME`: default `gp3-csi` when this kit creates the StorageClass
+- `PLANE_STORAGE_CLASS_NAME`: optional existing StorageClass name for in-cluster service PVCs
+
+## Existing EKS Cluster
+
+Use existing-cluster mode when a company wants Plane in a separate namespace on an EKS cluster it already operates, avoiding the extra EKS control-plane cost and keeping cluster autoscaling ownership with the platform team.
+
+Set these repository variables at minimum:
+
+- `CREATE_EKS_CLUSTER=false`
+- `EXISTING_EKS_CLUSTER_NAME=<cluster-name>`
+
+If any data service remains AWS-managed, also set:
+
+- `EXISTING_VPC_ID=<vpc-id>`
+- `EXISTING_PRIVATE_SUBNET_IDS_JSON=["subnet-a","subnet-b","subnet-c"]`
+- `EXISTING_VPC_CIDR=<vpc-cidr>`
+
+The workflow does not install Cluster Autoscaler, AWS Load Balancer Controller, or the wrapper StorageClass in existing-cluster mode by default. The GitHub OIDC role must already have Kubernetes RBAC in the target cluster and namespace. Set `PLANE_STORAGE_CLASS_NAME` if in-cluster services should use a specific existing StorageClass. See [docs/existing-cluster.md](docs/existing-cluster.md).
 
 ## Service Modes
 
@@ -106,6 +130,7 @@ Open the ALB hostname unless you configured `PLANE_APP_HOST`.
 More detail:
 
 - [docs/proposal-to-plane.md](docs/proposal-to-plane.md)
+- [docs/existing-cluster.md](docs/existing-cluster.md)
 - [docs/iam.md](docs/iam.md)
 - [docs/runbook.md](docs/runbook.md)
 - [.github/README-OIDC.md](.github/README-OIDC.md)
