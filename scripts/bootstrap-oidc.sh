@@ -16,7 +16,7 @@ Options:
   --policy-file          Policy JSON file path (default: .github/iam/terraform-prod-policy.json)
   --account-id           AWS account id (default: autodetect via sts)
   --profile              AWS CLI profile name
-  --allow-pull-request   Allow repo:<owner/repo>:pull_request subject (default: true)
+  --allow-pull-request   Allow repo:<owner/repo>:pull_request subject (default: false)
   -h, --help             Show this help
 EOF
 }
@@ -28,7 +28,7 @@ POLICY_NAME="terraform-prod-policy"
 POLICY_FILE=".github/iam/terraform-prod-policy.json"
 ACCOUNT_ID=""
 PROFILE=""
-ALLOW_PULL_REQUEST="true"
+ALLOW_PULL_REQUEST="false"
 OIDC_URL="https://token.actions.githubusercontent.com"
 OIDC_HOST="token.actions.githubusercontent.com"
 OIDC_AUDIENCE="sts.amazonaws.com"

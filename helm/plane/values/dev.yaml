@@ -18,9 +18,17 @@ autoscaling:
     minReplicas: 1
     maxReplicas: 1
 
+ingress:
+  enabled: true
+  ingressClass: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTP":3000}]'
+
 plane-ce:
   external_secrets:
-    doc_store_existingSecret: plane-dev-doc-store-secrets
+    doc_store_existingSecret: plane-doc-store-secrets
 
   postgres:
     local_setup: false
@@ -40,21 +48,19 @@ plane-ce:
     pgdb_remote_url: ""
     # Set by CI from Terraform ElastiCache output.
     remote_redis_url: ""
-    docstore_bucket: "plane-dev-uploads"
+    # Set by CI from Terraform S3 output.
+    docstore_bucket: ""
     aws_region: "eu-west-1"
     aws_s3_endpoint_url: ""
+    # Set by CI from Terraform-managed AWS Secrets Manager value.
+    secret_key: ""
+    live_server_secret_key: ""
 
   ingress:
-    enabled: true
-    # Temporary host without Route53/custom domain. Replace with your own domain later.
-    appHost: k8s-planedev-planedev-a16f021bc3-1442748221.eu-west-1.elb.amazonaws.com
-    ingressClass: alb
-    ingress_annotations:
-      alb.ingress.kubernetes.io/scheme: internet-facing
-      alb.ingress.kubernetes.io/target-type: ip
-      # Temporary workaround until custom domain + TLS are in place.
-      # Keeps legacy redirects that target :3000 reachable.
-      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTP":3000}]'
+    # The upstream chart only renders host-based ingress. The wrapper chart renders
+    # the portable ALB ingress instead, using this host only when it is set.
+    enabled: false
+    appHost: ""
 
   ssl:
     createIssuer: false

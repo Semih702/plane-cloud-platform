@@ -86,6 +86,12 @@ variable "skip_final_snapshot" {
   default     = true
 }
 
+variable "performance_insights_enabled" {
+  description = "Enable RDS Performance Insights"
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Common tags"
   type        = map(string)

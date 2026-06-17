@@ -1,20 +1,6 @@
 name: Terraform Prod
 
 on:
-  pull_request:
-    paths:
-      - 'terraform/environments/prod/**'
-      - 'terraform/modules/**'
-      - 'helm/**'
-      - '.github/workflows/terraform-prod.yml'
-  push:
-    branches:
-      - main
-    paths:
-      - 'terraform/environments/prod/**'
-      - 'terraform/modules/**'
-      - 'helm/**'
-      - '.github/workflows/terraform-prod.yml'
   workflow_dispatch:
     inputs:
       action:
@@ -28,16 +14,36 @@ on:
 
 env:
   TF_DIR: terraform/environments/prod
-  AWS_REGION: eu-west-1
-  EKS_CLUSTER_NAME: plane-prod-eks
-  HELM_RELEASE_NAME: plane-dev
-  K8S_NAMESPACE: plane-dev
+  AWS_REGION: ${{ vars.AWS_REGION || 'eu-west-1' }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || '' }}
+  TF_STATE_BUCKET_PREFIX: ${{ vars.TF_STATE_BUCKET_PREFIX || 'plane-cloud-platform-tfstate' }}
+  TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'prod/terraform.tfstate' }}
+  TF_LOCK_TABLE_NAME: ${{ vars.TF_LOCK_TABLE_NAME || 'plane-cloud-platform-tf-locks' }}
+  TF_VAR_aws_region: ${{ vars.AWS_REGION || 'eu-west-1' }}
+  TF_VAR_project_name: ${{ vars.PROJECT_NAME || 'plane' }}
+  TF_VAR_environment: ${{ vars.DEPLOY_ENVIRONMENT || 'prod' }}
+  TF_VAR_postgres_mode: ${{ vars.POSTGRES_MODE || 'aws-managed' }}
+  TF_VAR_redis_mode: ${{ vars.REDIS_MODE || 'aws-managed' }}
+  TF_VAR_rabbitmq_mode: ${{ vars.RABBITMQ_MODE || 'aws-managed' }}
+  TF_VAR_object_store_mode: ${{ vars.OBJECT_STORE_MODE || 's3-managed' }}
+  TF_VAR_plane_namespace: ${{ vars.K8S_NAMESPACE || 'plane' }}
+  TF_VAR_plane_service_account_name: ${{ format('{0}-srv-account', vars.HELM_RELEASE_NAME || 'plane') }}
+  TF_VAR_eks_cluster_admin_principal_arns: '["${{ secrets.AWS_GITHUB_OIDC_ROLE_ARN }}"]'
+  POSTGRES_MODE: ${{ vars.POSTGRES_MODE || 'aws-managed' }}
+  REDIS_MODE: ${{ vars.REDIS_MODE || 'aws-managed' }}
+  RABBITMQ_MODE: ${{ vars.RABBITMQ_MODE || 'aws-managed' }}
+  OBJECT_STORE_MODE: ${{ vars.OBJECT_STORE_MODE || 's3-managed' }}
+  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || format('{0}-{1}-eks', vars.PROJECT_NAME || 'plane', vars.DEPLOY_ENVIRONMENT || 'prod') }}
+  HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME || 'plane' }}
+  K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'plane' }}
+  PLANE_SERVICE_ACCOUNT_NAME: ${{ format('{0}-srv-account', vars.HELM_RELEASE_NAME || 'plane') }}
   HELM_CHART_DIR: helm/plane
   HELM_VALUES_FILE: helm/plane/values/dev.yaml
-  PLANE_DOCSTORE_SECRET_NAME: plane-dev-doc-store-secrets
+  PLANE_DOCSTORE_SECRET_NAME: ${{ vars.PLANE_DOCSTORE_SECRET_NAME || format('{0}-doc-store-secrets', vars.HELM_RELEASE_NAME || 'plane') }}
+  PLANE_APP_HOST: ${{ vars.PLANE_APP_HOST || '' }}
 
 concurrency:
-  group: terraform-prod-main
+  group: terraform-prod-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -46,7 +52,7 @@ permissions:
 
 jobs:
   validate-plan:
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan')
+    if: github.event.inputs.action == 'plan'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -64,57 +70,82 @@ jobs:
           role-to-assume: ${{ secrets.AWS_GITHUB_OIDC_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Ensure AWS Service-Linked Roles
+      - name: Resolve Terraform Backend
+        id: backend
         run: |
           set -euo pipefail
-          services=(
-            "rds.amazonaws.com:AWSServiceRoleForRDS"
-            "mq.amazonaws.com:AWSServiceRoleForAmazonMQ"
-            "elasticache.amazonaws.com:AWSServiceRoleForElastiCache"
-          )
-          for entry in "${services[@]}"; do
-            IFS=':' read -r service_name role_name <<< "$entry"
-            if aws iam get-role --role-name "$role_name" >/dev/null 2>&1; then
-              echo "$role_name already exists."
-            else
-              echo "Creating $role_name for $service_name..."
-              aws iam create-service-linked-role --aws-service-name "$service_name"
-            fi
-          done
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          STATE_BUCKET="${TF_STATE_BUCKET:-${{ env.TF_STATE_BUCKET_PREFIX }}-${ACCOUNT_ID}}"
+          echo "state_bucket=${STATE_BUCKET}" >> "$GITHUB_OUTPUT"
+
+          if aws s3api head-bucket --bucket "${STATE_BUCKET}" >/dev/null 2>&1; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Terraform backend bucket '${STATE_BUCKET}' is not available. Run Terraform Bootstrap with action=apply before remote-backed production plans."
+          fi
+
+      - name: Require Backend For Manual Plan
+        if: github.event_name == 'workflow_dispatch' && steps.backend.outputs.available != 'true'
+        run: |
+          echo "Terraform backend bucket '${{ steps.backend.outputs.state_bucket }}' is not available."
+          echo "Run Terraform Bootstrap with action=apply, then rerun Terraform Prod with action=plan."
+          exit 1
 
       - name: Terraform Init
+        if: steps.backend.outputs.available == 'true'
         run: |
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           terraform -chdir=${{ env.TF_DIR }} init -input=false \
-            -backend-config="bucket=plane-cloud-platform-tfstate-${ACCOUNT_ID}" \
-            -backend-config="dynamodb_table=plane-cloud-platform-tf-locks"
+            -backend-config="bucket=${{ steps.backend.outputs.state_bucket }}" \
+            -backend-config="key=${{ env.TF_STATE_KEY }}" \
+            -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE_NAME }}" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Terraform Init Without Backend
+        if: steps.backend.outputs.available != 'true'
+        run: terraform -chdir=${{ env.TF_DIR }} init -backend=false -input=false
 
       - name: Terraform Validate
         run: terraform -chdir=${{ env.TF_DIR }} validate
 
       - name: Terraform Plan
+        if: steps.backend.outputs.available == 'true'
         run: terraform -chdir=${{ env.TF_DIR }} plan -input=false -out=tfplan
 
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
-      - name: Helm Dependency Update
-        run: helm dependency update "${{ env.HELM_CHART_DIR }}"
+      - name: Helm Dependency Build
+        run: |
+          helm repo add makeplane https://helm.plane.so --force-update
+          helm dependency build "${{ env.HELM_CHART_DIR }}"
 
       - name: Helm Lint
-        run: helm lint "${{ env.HELM_CHART_DIR }}" --values "${{ env.HELM_VALUES_FILE }}"
+        run: |
+          helm lint "${{ env.HELM_CHART_DIR }}" \
+            --values "${{ env.HELM_VALUES_FILE }}" \
+            --set-string plane-ce.env.pgdb_remote_url="postgresql://ci:ci@example.invalid:5432/plane" \
+            --set-string plane-ce.env.remote_redis_url="rediss://:ci@example.invalid:6379/0" \
+            --set-string plane-ce.rabbitmq.external_rabbitmq_url="amqps://ci:ci@example.invalid:5671/" \
+            --set-string plane-ce.env.docstore_bucket="ci-docstore" \
+            --set-string plane-ce.env.secret_key="ci-template-secret-key" \
+            --set-string plane-ce.env.live_server_secret_key="ci-template-live-secret-key"
 
       - name: Helm Template Validate
-        run: helm template "${{ env.HELM_RELEASE_NAME }}" "${{ env.HELM_CHART_DIR }}" --namespace "${{ env.K8S_NAMESPACE }}" --values "${{ env.HELM_VALUES_FILE }}" > /dev/null
-
-      - name: Upload Plan Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: tfplan
-          path: ${{ env.TF_DIR }}/tfplan
+        run: |
+          helm template "${{ env.HELM_RELEASE_NAME }}" "${{ env.HELM_CHART_DIR }}" \
+            --namespace "${{ env.K8S_NAMESPACE }}" \
+            --values "${{ env.HELM_VALUES_FILE }}" \
+            --set-string plane-ce.env.pgdb_remote_url="postgresql://ci:ci@example.invalid:5432/plane" \
+            --set-string plane-ce.env.remote_redis_url="rediss://:ci@example.invalid:6379/0" \
+            --set-string plane-ce.rabbitmq.external_rabbitmq_url="amqps://ci:ci@example.invalid:5671/" \
+            --set-string plane-ce.env.docstore_bucket="ci-docstore" \
+            --set-string plane-ce.env.secret_key="ci-template-secret-key" \
+            --set-string plane-ce.env.live_server_secret_key="ci-template-live-secret-key" \
+            > /dev/null
 
   apply:
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
     runs-on: ubuntu-latest
     environment: prod
     steps:
@@ -137,10 +168,18 @@ jobs:
         run: |
           set -euo pipefail
           services=(
-            "rds.amazonaws.com:AWSServiceRoleForRDS"
-            "mq.amazonaws.com:AWSServiceRoleForAmazonMQ"
-            "elasticache.amazonaws.com:AWSServiceRoleForElastiCache"
+            "eks.amazonaws.com:AWSServiceRoleForAmazonEKS"
+            "eks-nodegroup.amazonaws.com:AWSServiceRoleForAmazonEKSNodegroup"
           )
+          if [ "${POSTGRES_MODE}" = "aws-managed" ]; then
+            services+=("rds.amazonaws.com:AWSServiceRoleForRDS")
+          fi
+          if [ "${RABBITMQ_MODE}" = "aws-managed" ]; then
+            services+=("mq.amazonaws.com:AWSServiceRoleForAmazonMQ")
+          fi
+          if [ "${REDIS_MODE}" = "aws-managed" ]; then
+            services+=("elasticache.amazonaws.com:AWSServiceRoleForElastiCache")
+          fi
           for entry in "${services[@]}"; do
             IFS=':' read -r service_name role_name <<< "$entry"
             if aws iam get-role --role-name "$role_name" >/dev/null 2>&1; then
@@ -154,9 +193,12 @@ jobs:
       - name: Terraform Init
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          STATE_BUCKET="${TF_STATE_BUCKET:-${{ env.TF_STATE_BUCKET_PREFIX }}-${ACCOUNT_ID}}"
           terraform -chdir=${{ env.TF_DIR }} init -input=false \
-            -backend-config="bucket=plane-cloud-platform-tfstate-${ACCOUNT_ID}" \
-            -backend-config="dynamodb_table=plane-cloud-platform-tf-locks"
+            -backend-config="bucket=${STATE_BUCKET}" \
+            -backend-config="key=${{ env.TF_STATE_KEY }}" \
+            -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE_NAME }}" \
+            -backend-config="region=${{ env.AWS_REGION }}"
 
       - name: Terraform Apply
         run: terraform -chdir=${{ env.TF_DIR }} apply -input=false -auto-approve
@@ -167,8 +209,10 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
-      - name: Helm Dependency Update
-        run: helm dependency update "${{ env.HELM_CHART_DIR }}"
+      - name: Helm Dependency Build
+        run: |
+          helm repo add makeplane https://helm.plane.so --force-update
+          helm dependency build "${{ env.HELM_CHART_DIR }}"
 
       - name: Ensure namespace exists
         run: kubectl get namespace "${{ env.K8S_NAMESPACE }}" || kubectl create namespace "${{ env.K8S_NAMESPACE }}"
@@ -203,13 +247,14 @@ jobs:
 
           VPC_ID="$(terraform -chdir=${{ env.TF_DIR }} output -raw vpc_id)"
           NODE_GROUP_NAME="$(terraform -chdir=${{ env.TF_DIR }} output -raw eks_node_group_name)"
-          DOCSTORE_BUCKET="$(terraform -chdir=${{ env.TF_DIR }} output -raw plane_docstore_bucket_name)"
-          PLANE_IRSA_ROLE_ARN="$(terraform -chdir=${{ env.TF_DIR }} output -raw plane_irsa_role_arn)"
-          RDS_SECRET_ARN="$(terraform -chdir=${{ env.TF_DIR }} output -raw rds_credentials_secret_arn)"
-          RABBITMQ_SECRET_ARN="$(terraform -chdir=${{ env.TF_DIR }} output -raw rabbitmq_credentials_secret_arn)"
-          REDIS_SECRET_ARN="$(terraform -chdir=${{ env.TF_DIR }} output -raw redis_credentials_secret_arn)"
+          PLANE_APP_SECRET_ARN="$(terraform -chdir=${{ env.TF_DIR }} output -raw plane_app_secret_arn)"
           AWS_LBC_IRSA_ROLE_ARN="$(terraform -chdir=${{ env.TF_DIR }} output -raw eks_aws_load_balancer_controller_irsa_role_arn)"
           CLUSTER_AUTOSCALER_IRSA_ROLE_ARN="$(output_raw_or_empty eks_cluster_autoscaler_irsa_role_arn)"
+          DOCSTORE_BUCKET=""
+          PLANE_IRSA_ROLE_ARN=""
+          RDS_SECRET_ARN=""
+          RABBITMQ_SECRET_ARN=""
+          REDIS_SECRET_ARN=""
 
           if [ -z "$CLUSTER_AUTOSCALER_IRSA_ROLE_ARN" ]; then
             ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
@@ -219,13 +264,28 @@ jobs:
 
           require_nonempty "vpc_id" "$VPC_ID"
           require_nonempty "eks_node_group_name" "$NODE_GROUP_NAME"
-          require_nonempty "plane_docstore_bucket_name" "$DOCSTORE_BUCKET"
-          require_nonempty "rds_credentials_secret_arn" "$RDS_SECRET_ARN"
-          require_nonempty "rabbitmq_credentials_secret_arn" "$RABBITMQ_SECRET_ARN"
-          require_nonempty "redis_credentials_secret_arn" "$REDIS_SECRET_ARN"
-          require_iam_role_arn "plane_irsa_role_arn" "$PLANE_IRSA_ROLE_ARN"
+          require_nonempty "plane_app_secret_arn" "$PLANE_APP_SECRET_ARN"
           require_iam_role_arn "eks_aws_load_balancer_controller_irsa_role_arn" "$AWS_LBC_IRSA_ROLE_ARN"
           require_iam_role_arn "eks_cluster_autoscaler_irsa_role_arn" "$CLUSTER_AUTOSCALER_IRSA_ROLE_ARN"
+
+          if [ "${POSTGRES_MODE}" = "aws-managed" ]; then
+            RDS_SECRET_ARN="$(terraform -chdir=${{ env.TF_DIR }} output -raw rds_credentials_secret_arn)"
+            require_nonempty "rds_credentials_secret_arn" "$RDS_SECRET_ARN"
+          fi
+          if [ "${RABBITMQ_MODE}" = "aws-managed" ]; then
+            RABBITMQ_SECRET_ARN="$(terraform -chdir=${{ env.TF_DIR }} output -raw rabbitmq_credentials_secret_arn)"
+            require_nonempty "rabbitmq_credentials_secret_arn" "$RABBITMQ_SECRET_ARN"
+          fi
+          if [ "${REDIS_MODE}" = "aws-managed" ]; then
+            REDIS_SECRET_ARN="$(terraform -chdir=${{ env.TF_DIR }} output -raw redis_credentials_secret_arn)"
+            require_nonempty "redis_credentials_secret_arn" "$REDIS_SECRET_ARN"
+          fi
+          if [ "${OBJECT_STORE_MODE}" = "s3-managed" ]; then
+            DOCSTORE_BUCKET="$(terraform -chdir=${{ env.TF_DIR }} output -raw plane_docstore_bucket_name)"
+            PLANE_IRSA_ROLE_ARN="$(terraform -chdir=${{ env.TF_DIR }} output -raw plane_irsa_role_arn)"
+            require_nonempty "plane_docstore_bucket_name" "$DOCSTORE_BUCKET"
+            require_iam_role_arn "plane_irsa_role_arn" "$PLANE_IRSA_ROLE_ARN"
+          fi
 
           echo "vpc_id=$VPC_ID" >> "$GITHUB_OUTPUT"
           echo "eks_node_group_name=$NODE_GROUP_NAME" >> "$GITHUB_OUTPUT"
@@ -234,6 +294,7 @@ jobs:
           echo "rds_credentials_secret_arn=$RDS_SECRET_ARN" >> "$GITHUB_OUTPUT"
           echo "rabbitmq_credentials_secret_arn=$RABBITMQ_SECRET_ARN" >> "$GITHUB_OUTPUT"
           echo "redis_credentials_secret_arn=$REDIS_SECRET_ARN" >> "$GITHUB_OUTPUT"
+          echo "plane_app_secret_arn=$PLANE_APP_SECRET_ARN" >> "$GITHUB_OUTPUT"
           echo "aws_load_balancer_controller_irsa_role_arn=$AWS_LBC_IRSA_ROLE_ARN" >> "$GITHUB_OUTPUT"
           echo "cluster_autoscaler_irsa_role_arn=$CLUSTER_AUTOSCALER_IRSA_ROLE_ARN" >> "$GITHUB_OUTPUT"
 
@@ -373,102 +434,279 @@ jobs:
               --overwrite
           fi
 
-      - name: Build Runtime Helm Values (RDS + Amazon MQ + ElastiCache)
+      - name: Ensure Plane Service Account (IRSA)
+        if: env.OBJECT_STORE_MODE == 's3-managed'
+        run: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: ServiceAccount
+          automountServiceAccountToken: true
+          metadata:
+            name: ${{ env.PLANE_SERVICE_ACCOUNT_NAME }}
+            namespace: ${{ env.K8S_NAMESPACE }}
+            labels:
+              app.kubernetes.io/managed-by: Helm
+            annotations:
+              meta.helm.sh/release-name: ${{ env.HELM_RELEASE_NAME }}
+              meta.helm.sh/release-namespace: ${{ env.K8S_NAMESPACE }}
+              eks.amazonaws.com/role-arn: ${{ steps.tf_outputs.outputs.plane_irsa_role_arn }}
+          EOF
+
+      - name: Remove Plane Service Account IRSA Annotation
+        if: env.OBJECT_STORE_MODE != 's3-managed'
+        run: |
+          kubectl annotate serviceaccount "${{ env.PLANE_SERVICE_ACCOUNT_NAME }}" \
+            -n "${{ env.K8S_NAMESPACE }}" \
+            eks.amazonaws.com/role-arn- \
+            --overwrite || true
+
+      - name: Build Runtime Helm Values
         id: plane_runtime_values
+        env:
+          PLANE_PGDB_REMOTE_URL: ${{ secrets.PLANE_PGDB_REMOTE_URL }}
+          PLANE_REDIS_URL: ${{ secrets.PLANE_REDIS_URL }}
+          PLANE_RABBITMQ_URL: ${{ secrets.PLANE_RABBITMQ_URL }}
+          PLANE_DOCSTORE_BUCKET: ${{ vars.PLANE_DOCSTORE_BUCKET || '' }}
+          PLANE_EXTERNAL_S3_REGION: ${{ vars.PLANE_EXTERNAL_S3_REGION || vars.AWS_REGION || 'eu-west-1' }}
+          PLANE_EXTERNAL_S3_ACCESS_KEY_ID: ${{ secrets.PLANE_EXTERNAL_S3_ACCESS_KEY_ID }}
+          PLANE_EXTERNAL_S3_SECRET_ACCESS_KEY: ${{ secrets.PLANE_EXTERNAL_S3_SECRET_ACCESS_KEY }}
+          PLANE_S3_ENDPOINT_URL: ${{ secrets.PLANE_S3_ENDPOINT_URL }}
         run: |
           set -euo pipefail
 
-          RDS_SECRET_ARN="${{ steps.tf_outputs.outputs.rds_credentials_secret_arn }}"
-          RABBIT_SECRET_ARN="${{ steps.tf_outputs.outputs.rabbitmq_credentials_secret_arn }}"
-          REDIS_SECRET_ARN="${{ steps.tf_outputs.outputs.redis_credentials_secret_arn }}"
+          PLANE_APP_SECRET_ARN="${{ steps.tf_outputs.outputs.plane_app_secret_arn }}"
 
-          if [ -z "${RDS_SECRET_ARN}" ] || [ -z "${RABBIT_SECRET_ARN}" ] || [ -z "${REDIS_SECRET_ARN}" ]; then
-            echo "RDS/RabbitMQ/Redis credentials secret outputs are empty."
+          require_nonempty() {
+            local name="$1"
+            local value="$2"
+            if [ -z "$value" ]; then
+              echo "$name is required for this service mode."
+              exit 1
+            fi
+          }
+
+          mask_if_set() {
+            local value="$1"
+            if [ -n "$value" ]; then
+              echo "::add-mask::${value}"
+            fi
+          }
+
+          if [ -z "${PLANE_APP_SECRET_ARN}" ]; then
+            echo "plane_app_secret_arn output is empty."
             exit 1
           fi
 
-          RDS_SECRET_JSON="$(aws secretsmanager get-secret-value \
-            --secret-id "${RDS_SECRET_ARN}" \
-            --region "${{ env.AWS_REGION }}" \
-            --query 'SecretString' \
-            --output text)"
-          RABBIT_SECRET_JSON="$(aws secretsmanager get-secret-value \
-            --secret-id "${RABBIT_SECRET_ARN}" \
-            --region "${{ env.AWS_REGION }}" \
-            --query 'SecretString' \
-            --output text)"
-          REDIS_SECRET_JSON="$(aws secretsmanager get-secret-value \
-            --secret-id "${REDIS_SECRET_ARN}" \
+          PLANE_APP_SECRET_JSON="$(aws secretsmanager get-secret-value \
+            --secret-id "${PLANE_APP_SECRET_ARN}" \
             --region "${{ env.AWS_REGION }}" \
             --query 'SecretString' \
             --output text)"
 
-          DB_HOST="$(echo "${RDS_SECRET_JSON}" | jq -er '.host')"
-          DB_PORT="$(echo "${RDS_SECRET_JSON}" | jq -er '.port')"
-          DB_NAME="$(echo "${RDS_SECRET_JSON}" | jq -er '.database')"
-          DB_USER="$(echo "${RDS_SECRET_JSON}" | jq -er '.username')"
-          DB_PASS="$(echo "${RDS_SECRET_JSON}" | jq -er '.password')"
-          RABBIT_ENDPOINT="$(echo "${RABBIT_SECRET_JSON}" | jq -er '.endpoint')"
-          RABBIT_USERNAME="$(echo "${RABBIT_SECRET_JSON}" | jq -er '.username')"
-          RABBIT_PASSWORD="$(echo "${RABBIT_SECRET_JSON}" | jq -er '.password')"
-          REDIS_ENDPOINT="$(echo "${REDIS_SECRET_JSON}" | jq -er '.endpoint')"
-          REDIS_PORT="$(echo "${REDIS_SECRET_JSON}" | jq -er '.port')"
-          REDIS_AUTH_TOKEN="$(echo "${REDIS_SECRET_JSON}" | jq -er '.auth_token')"
+          PLANE_SECRET_KEY="$(echo "${PLANE_APP_SECRET_JSON}" | jq -er '.secret_key')"
+          PLANE_LIVE_SERVER_SECRET_KEY="$(echo "${PLANE_APP_SECRET_JSON}" | jq -er '.live_server_secret_key')"
+          LOCAL_POSTGRES_PASSWORD="$(echo "${PLANE_APP_SECRET_JSON}" | jq -er '.postgres_password')"
+          LOCAL_RABBITMQ_PASSWORD="$(echo "${PLANE_APP_SECRET_JSON}" | jq -er '.rabbitmq_password')"
+          LOCAL_MINIO_ROOT_PASSWORD="$(echo "${PLANE_APP_SECRET_JSON}" | jq -er '.minio_root_password')"
 
-          if [ -z "${DB_HOST}" ] || [ -z "${DB_PORT}" ] || [ -z "${DB_NAME}" ] || [ -z "${DB_USER}" ] || [ -z "${DB_PASS}" ] || [ -z "${RABBIT_ENDPOINT}" ] || [ -z "${RABBIT_USERNAME}" ] || [ -z "${RABBIT_PASSWORD}" ] || [ -z "${REDIS_ENDPOINT}" ] || [ -z "${REDIS_PORT}" ] || [ -z "${REDIS_AUTH_TOKEN}" ]; then
-            echo "Managed service secrets are missing required fields."
-            exit 1
+          POSTGRES_LOCAL_SETUP="false"
+          REDIS_LOCAL_SETUP="false"
+          RABBITMQ_LOCAL_SETUP="false"
+          MINIO_LOCAL_SETUP="false"
+          PGDB_REMOTE_URL=""
+          REDIS_URL=""
+          AMQP_URL=""
+          DOCSTORE_BUCKET=""
+          AWS_ACCESS_KEY_ID_VALUE=""
+          AWS_SECRET_ACCESS_KEY_VALUE=""
+          AWS_S3_ENDPOINT_URL_VALUE=""
+          AWS_REGION_VALUE="${{ env.AWS_REGION }}"
+
+          if [ "${POSTGRES_MODE}" = "aws-managed" ]; then
+            RDS_SECRET_ARN="${{ steps.tf_outputs.outputs.rds_credentials_secret_arn }}"
+            require_nonempty "rds_credentials_secret_arn" "${RDS_SECRET_ARN}"
+            RDS_SECRET_JSON="$(aws secretsmanager get-secret-value --secret-id "${RDS_SECRET_ARN}" --region "${{ env.AWS_REGION }}" --query 'SecretString' --output text)"
+            DB_HOST="$(echo "${RDS_SECRET_JSON}" | jq -er '.host')"
+            DB_PORT="$(echo "${RDS_SECRET_JSON}" | jq -er '.port')"
+            DB_NAME="$(echo "${RDS_SECRET_JSON}" | jq -er '.database')"
+            DB_USER="$(echo "${RDS_SECRET_JSON}" | jq -er '.username')"
+            DB_PASS="$(echo "${RDS_SECRET_JSON}" | jq -er '.password')"
+            mask_if_set "${DB_PASS}"
+            DB_USER_URI="$(printf '%s' "${DB_USER}" | jq -sRr @uri)"
+            DB_PASS_URI="$(printf '%s' "${DB_PASS}" | jq -sRr @uri)"
+            PGDB_REMOTE_URL="postgresql://${DB_USER_URI}:${DB_PASS_URI}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+          elif [ "${POSTGRES_MODE}" = "external" ]; then
+            require_nonempty "PLANE_PGDB_REMOTE_URL" "${PLANE_PGDB_REMOTE_URL}"
+            PGDB_REMOTE_URL="${PLANE_PGDB_REMOTE_URL}"
+          else
+            POSTGRES_LOCAL_SETUP="true"
           fi
 
-          DB_USER_URI="$(printf '%s' "${DB_USER}" | jq -sRr @uri)"
-          DB_PASS_URI="$(printf '%s' "${DB_PASS}" | jq -sRr @uri)"
-          RABBIT_HOSTPORT="${RABBIT_ENDPOINT#*://}"
-          RABBIT_USERNAME_URI="$(printf '%s' "${RABBIT_USERNAME}" | jq -sRr @uri)"
-          RABBIT_PASSWORD_URI="$(printf '%s' "${RABBIT_PASSWORD}" | jq -sRr @uri)"
-          REDIS_AUTH_TOKEN_URI="$(printf '%s' "${REDIS_AUTH_TOKEN}" | jq -sRr @uri)"
+          if [ "${REDIS_MODE}" = "aws-managed" ]; then
+            REDIS_SECRET_ARN="${{ steps.tf_outputs.outputs.redis_credentials_secret_arn }}"
+            require_nonempty "redis_credentials_secret_arn" "${REDIS_SECRET_ARN}"
+            REDIS_SECRET_JSON="$(aws secretsmanager get-secret-value --secret-id "${REDIS_SECRET_ARN}" --region "${{ env.AWS_REGION }}" --query 'SecretString' --output text)"
+            REDIS_ENDPOINT="$(echo "${REDIS_SECRET_JSON}" | jq -er '.endpoint')"
+            REDIS_PORT="$(echo "${REDIS_SECRET_JSON}" | jq -er '.port')"
+            REDIS_AUTH_TOKEN="$(echo "${REDIS_SECRET_JSON}" | jq -er '.auth_token')"
+            mask_if_set "${REDIS_AUTH_TOKEN}"
+            REDIS_AUTH_TOKEN_URI="$(printf '%s' "${REDIS_AUTH_TOKEN}" | jq -sRr @uri)"
+            REDIS_URL="rediss://:${REDIS_AUTH_TOKEN_URI}@${REDIS_ENDPOINT}:${REDIS_PORT}/0"
+          elif [ "${REDIS_MODE}" = "external" ]; then
+            require_nonempty "PLANE_REDIS_URL" "${PLANE_REDIS_URL}"
+            REDIS_URL="${PLANE_REDIS_URL}"
+          else
+            REDIS_LOCAL_SETUP="true"
+          fi
 
-          PGDB_REMOTE_URL="postgresql://${DB_USER_URI}:${DB_PASS_URI}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
-          AMQP_URL="amqps://${RABBIT_USERNAME_URI}:${RABBIT_PASSWORD_URI}@${RABBIT_HOSTPORT}/"
-          REDIS_URL="rediss://:${REDIS_AUTH_TOKEN_URI}@${REDIS_ENDPOINT}:${REDIS_PORT}/0"
+          if [ "${RABBITMQ_MODE}" = "aws-managed" ]; then
+            RABBIT_SECRET_ARN="${{ steps.tf_outputs.outputs.rabbitmq_credentials_secret_arn }}"
+            require_nonempty "rabbitmq_credentials_secret_arn" "${RABBIT_SECRET_ARN}"
+            RABBIT_SECRET_JSON="$(aws secretsmanager get-secret-value --secret-id "${RABBIT_SECRET_ARN}" --region "${{ env.AWS_REGION }}" --query 'SecretString' --output text)"
+            RABBIT_ENDPOINT="$(echo "${RABBIT_SECRET_JSON}" | jq -er '.endpoint')"
+            RABBIT_USERNAME="$(echo "${RABBIT_SECRET_JSON}" | jq -er '.username')"
+            RABBIT_PASSWORD="$(echo "${RABBIT_SECRET_JSON}" | jq -er '.password')"
+            mask_if_set "${RABBIT_PASSWORD}"
+            RABBIT_HOSTPORT="${RABBIT_ENDPOINT#*://}"
+            RABBIT_USERNAME_URI="$(printf '%s' "${RABBIT_USERNAME}" | jq -sRr @uri)"
+            RABBIT_PASSWORD_URI="$(printf '%s' "${RABBIT_PASSWORD}" | jq -sRr @uri)"
+            AMQP_URL="amqps://${RABBIT_USERNAME_URI}:${RABBIT_PASSWORD_URI}@${RABBIT_HOSTPORT}/"
+          elif [ "${RABBITMQ_MODE}" = "external" ]; then
+            require_nonempty "PLANE_RABBITMQ_URL" "${PLANE_RABBITMQ_URL}"
+            AMQP_URL="${PLANE_RABBITMQ_URL}"
+          else
+            RABBITMQ_LOCAL_SETUP="true"
+          fi
 
-          cat > /tmp/plane-runtime-values.yaml <<EOF
-          plane-ce:
-            postgres:
-              local_setup: false
-            redis:
-              local_setup: false
-            rabbitmq:
-              local_setup: false
-              external_rabbitmq_url: "${AMQP_URL}"
-            env:
-              pgdb_remote_url: "${PGDB_REMOTE_URL}"
-              remote_redis_url: "${REDIS_URL}"
-          EOF
+          if [ "${OBJECT_STORE_MODE}" = "s3-managed" ]; then
+            DOCSTORE_BUCKET="${{ steps.tf_outputs.outputs.plane_docstore_bucket_name }}"
+            require_nonempty "plane_docstore_bucket_name" "${DOCSTORE_BUCKET}"
+            AWS_S3_ENDPOINT_URL_VALUE="${PLANE_S3_ENDPOINT_URL:-}"
+          elif [ "${OBJECT_STORE_MODE}" = "external-s3" ]; then
+            DOCSTORE_BUCKET="${PLANE_DOCSTORE_BUCKET}"
+            AWS_REGION_VALUE="${PLANE_EXTERNAL_S3_REGION}"
+            AWS_ACCESS_KEY_ID_VALUE="${PLANE_EXTERNAL_S3_ACCESS_KEY_ID}"
+            AWS_SECRET_ACCESS_KEY_VALUE="${PLANE_EXTERNAL_S3_SECRET_ACCESS_KEY}"
+            AWS_S3_ENDPOINT_URL_VALUE="${PLANE_S3_ENDPOINT_URL:-}"
+            require_nonempty "PLANE_DOCSTORE_BUCKET" "${DOCSTORE_BUCKET}"
+            require_nonempty "PLANE_EXTERNAL_S3_ACCESS_KEY_ID" "${AWS_ACCESS_KEY_ID_VALUE}"
+            require_nonempty "PLANE_EXTERNAL_S3_SECRET_ACCESS_KEY" "${AWS_SECRET_ACCESS_KEY_VALUE}"
+          else
+            MINIO_LOCAL_SETUP="true"
+            DOCSTORE_BUCKET="${PLANE_DOCSTORE_BUCKET:-uploads}"
+          fi
 
-          echo "runtime_values_file=/tmp/plane-runtime-values.yaml" >> "$GITHUB_OUTPUT"
+          mask_if_set "${PGDB_REMOTE_URL}"
+          mask_if_set "${REDIS_URL}"
+          mask_if_set "${AMQP_URL}"
+          mask_if_set "${AWS_ACCESS_KEY_ID_VALUE}"
+          mask_if_set "${AWS_SECRET_ACCESS_KEY_VALUE}"
+          mask_if_set "${PLANE_SECRET_KEY}"
+          mask_if_set "${PLANE_LIVE_SERVER_SECRET_KEY}"
+          mask_if_set "${LOCAL_POSTGRES_PASSWORD}"
+          mask_if_set "${LOCAL_RABBITMQ_PASSWORD}"
+          mask_if_set "${LOCAL_MINIO_ROOT_PASSWORD}"
+
+          export POSTGRES_LOCAL_SETUP REDIS_LOCAL_SETUP RABBITMQ_LOCAL_SETUP MINIO_LOCAL_SETUP
+          export PGDB_REMOTE_URL REDIS_URL AMQP_URL DOCSTORE_BUCKET AWS_REGION_VALUE AWS_ACCESS_KEY_ID_VALUE AWS_SECRET_ACCESS_KEY_VALUE AWS_S3_ENDPOINT_URL_VALUE
+          export PLANE_SECRET_KEY PLANE_LIVE_SERVER_SECRET_KEY LOCAL_POSTGRES_PASSWORD LOCAL_RABBITMQ_PASSWORD LOCAL_MINIO_ROOT_PASSWORD
+
+          python <<'PY'
+          import json
+          import os
+
+          def as_bool(name):
+              return os.environ[name].lower() == "true"
+
+          values = {
+              "plane-ce": {
+                  "postgres": {
+                      "local_setup": as_bool("POSTGRES_LOCAL_SETUP"),
+                  },
+                  "redis": {
+                      "local_setup": as_bool("REDIS_LOCAL_SETUP"),
+                  },
+                  "rabbitmq": {
+                      "local_setup": as_bool("RABBITMQ_LOCAL_SETUP"),
+                  },
+                  "minio": {
+                      "local_setup": as_bool("MINIO_LOCAL_SETUP"),
+                  },
+                  "env": {
+                      "secret_key": os.environ["PLANE_SECRET_KEY"],
+                      "live_server_secret_key": os.environ["PLANE_LIVE_SERVER_SECRET_KEY"],
+                  },
+              }
+          }
+
+          plane = values["plane-ce"]
+          env = plane["env"]
+
+          if plane["postgres"]["local_setup"]:
+              env["pgdb_username"] = "plane"
+              env["pgdb_password"] = os.environ["LOCAL_POSTGRES_PASSWORD"]
+              env["pgdb_name"] = "plane"
+          elif os.environ["PGDB_REMOTE_URL"]:
+              env["pgdb_remote_url"] = os.environ["PGDB_REMOTE_URL"]
+
+          if not plane["redis"]["local_setup"] and os.environ["REDIS_URL"]:
+              env["remote_redis_url"] = os.environ["REDIS_URL"]
+
+          if plane["rabbitmq"]["local_setup"]:
+              plane["rabbitmq"]["default_user"] = "plane"
+              plane["rabbitmq"]["default_password"] = os.environ["LOCAL_RABBITMQ_PASSWORD"]
+          elif os.environ["AMQP_URL"]:
+              plane["rabbitmq"]["external_rabbitmq_url"] = os.environ["AMQP_URL"]
+
+          if plane["minio"]["local_setup"]:
+              plane["minio"]["root_user"] = "admin"
+              plane["minio"]["root_password"] = os.environ["LOCAL_MINIO_ROOT_PASSWORD"]
+              env["docstore_bucket"] = os.environ["DOCSTORE_BUCKET"]
+          else:
+              env["docstore_bucket"] = os.environ["DOCSTORE_BUCKET"]
+              env["aws_region"] = os.environ["AWS_REGION_VALUE"]
+              env["aws_access_key"] = os.environ["AWS_ACCESS_KEY_ID_VALUE"]
+              env["aws_secret_access_key"] = os.environ["AWS_SECRET_ACCESS_KEY_VALUE"]
+              env["aws_s3_endpoint_url"] = os.environ["AWS_S3_ENDPOINT_URL_VALUE"]
+
+          with open("/tmp/plane-runtime-values.json", "w", encoding="utf-8") as f:
+              json.dump(values, f)
+          PY
+
+          echo "runtime_values_file=/tmp/plane-runtime-values.json" >> "$GITHUB_OUTPUT"
 
       - name: Helm Upgrade/Install
         run: |
+          set -euo pipefail
+
+          helm_set_args=(
+            --set-string "plane-ce.external_secrets.doc_store_existingSecret=${{ env.PLANE_DOCSTORE_SECRET_NAME }}"
+          )
+
+          if [ -n "${{ env.PLANE_APP_HOST }}" ]; then
+            helm_set_args+=(--set-string "plane-ce.ingress.appHost=${{ env.PLANE_APP_HOST }}")
+          fi
+
           helm upgrade --install "${{ env.HELM_RELEASE_NAME }}" "${{ env.HELM_CHART_DIR }}" \
             --namespace "${{ env.K8S_NAMESPACE }}" \
             --values "${{ env.HELM_VALUES_FILE }}" \
             --values "${{ steps.plane_runtime_values.outputs.runtime_values_file }}" \
-            --set-string plane-ce.env.docstore_bucket="${{ steps.tf_outputs.outputs.plane_docstore_bucket_name }}" \
-            --set-string plane-ce.env.aws_region="${{ env.AWS_REGION }}" \
-            --set-string plane-ce.env.aws_s3_endpoint_url="${{ secrets.PLANE_S3_ENDPOINT_URL }}" \
+            "${helm_set_args[@]}" \
             --rollback-on-failure \
             --wait \
             --wait-for-jobs \
             --timeout 20m
 
       - name: Annotate Plane Service Account (IRSA)
+        if: env.OBJECT_STORE_MODE == 's3-managed'
         run: |
-          kubectl annotate serviceaccount "${{ env.HELM_RELEASE_NAME }}-srv-account" \
+          kubectl annotate serviceaccount "${{ env.PLANE_SERVICE_ACCOUNT_NAME }}" \
             -n "${{ env.K8S_NAMESPACE }}" \
             eks.amazonaws.com/role-arn="${{ steps.tf_outputs.outputs.plane_irsa_role_arn }}" \
             --overwrite
 
       - name: Restart Plane Workloads After IRSA Annotation
+        if: env.OBJECT_STORE_MODE == 's3-managed'
         run: |
           for deploy in "${{ env.HELM_RELEASE_NAME }}-api-wl" "${{ env.HELM_RELEASE_NAME }}-live-wl" "${{ env.HELM_RELEASE_NAME }}-worker-wl" "${{ env.HELM_RELEASE_NAME }}-beat-worker-wl" "${{ env.HELM_RELEASE_NAME }}-web-wl" "${{ env.HELM_RELEASE_NAME }}-admin-wl" "${{ env.HELM_RELEASE_NAME }}-space-wl"; do
             kubectl rollout restart "deployment/${deploy}" -n "${{ env.K8S_NAMESPACE }}" || true

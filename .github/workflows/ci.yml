@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  pull_request:
+    paths:
+      - 'terraform/**'
+      - 'helm/**'
+      - '.github/**'
+      - 'scripts/**'
+      - 'README.md'
+      - 'docs/**'
+      - '.gitignore'
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+      - 'helm/**'
+      - '.github/**'
+      - 'scripts/**'
+      - 'README.md'
+      - 'docs/**'
+      - '.gitignore'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.5
+          terraform_wrapper: false
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Validate IAM Policy JSON
+        run: python -m json.tool .github/iam/terraform-prod-policy.json > /dev/null
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Init Bootstrap
+        run: terraform -chdir=terraform/environments/bootstrap init -backend=false -input=false
+
+      - name: Terraform Validate Bootstrap
+        run: terraform -chdir=terraform/environments/bootstrap validate
+
+      - name: Terraform Init Prod
+        run: terraform -chdir=terraform/environments/prod init -backend=false -input=false
+
+      - name: Terraform Validate Prod
+        run: terraform -chdir=terraform/environments/prod validate
+
+      - name: Helm Dependency Build
+        run: |
+          helm repo add makeplane https://helm.plane.so --force-update
+          helm dependency build helm/plane
+
+      - name: Helm Lint
+        run: |
+          helm lint helm/plane \
+            --values helm/plane/values/dev.yaml \
+            --set-string plane-ce.env.pgdb_remote_url="postgresql://ci:ci@example.invalid:5432/plane" \
+            --set-string plane-ce.env.remote_redis_url="rediss://:ci@example.invalid:6379/0" \
+            --set-string plane-ce.rabbitmq.external_rabbitmq_url="amqps://ci:ci@example.invalid:5671/" \
+            --set-string plane-ce.env.docstore_bucket="ci-docstore" \
+            --set-string plane-ce.env.secret_key="ci-template-secret-key" \
+            --set-string plane-ce.env.live_server_secret_key="ci-template-live-secret-key"
+
+      - name: Helm Template
+        run: |
+          helm template plane helm/plane \
+            --namespace plane \
+            --values helm/plane/values/dev.yaml \
+            --set-string plane-ce.env.pgdb_remote_url="postgresql://ci:ci@example.invalid:5432/plane" \
+            --set-string plane-ce.env.remote_redis_url="rediss://:ci@example.invalid:6379/0" \
+            --set-string plane-ce.rabbitmq.external_rabbitmq_url="amqps://ci:ci@example.invalid:5671/" \
+            --set-string plane-ce.env.docstore_bucket="ci-docstore" \
+            --set-string plane-ce.env.secret_key="ci-template-secret-key" \
+            --set-string plane-ce.env.live_server_secret_key="ci-template-live-secret-key" \
+            > /dev/null

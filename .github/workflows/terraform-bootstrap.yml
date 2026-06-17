@@ -1,16 +1,6 @@
 name: Terraform Bootstrap
 
 on:
-  pull_request:
-    paths:
-      - 'terraform/environments/bootstrap/**'
-      - '.github/workflows/terraform-bootstrap.yml'
-  push:
-    branches:
-      - main
-    paths:
-      - 'terraform/environments/bootstrap/**'
-      - '.github/workflows/terraform-bootstrap.yml'
   workflow_dispatch:
     inputs:
       action:
@@ -24,15 +14,21 @@ on:
 
 env:
   TF_DIR: terraform/environments/bootstrap
-  AWS_REGION: eu-west-1
+  AWS_REGION: ${{ vars.AWS_REGION || 'eu-west-1' }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || '' }}
+  TF_STATE_BUCKET_PREFIX: ${{ vars.TF_STATE_BUCKET_PREFIX || 'plane-cloud-platform-tfstate' }}
+  TF_LOCK_TABLE_NAME: ${{ vars.TF_LOCK_TABLE_NAME || 'plane-cloud-platform-tf-locks' }}
 
 permissions:
   id-token: write
   contents: read
 
+concurrency:
+  group: terraform-bootstrap-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   plan:
-    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -52,11 +48,48 @@ jobs:
       - name: Terraform Init
         run: terraform -chdir=${{ env.TF_DIR }} init -input=false
 
+      - name: Import Existing Bootstrap Resources
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          STATE_BUCKET="${TF_STATE_BUCKET:-${{ env.TF_STATE_BUCKET_PREFIX }}-${ACCOUNT_ID}}"
+          tf_var_args=(
+            -var="aws_region=${{ env.AWS_REGION }}"
+            -var="state_bucket_name=${STATE_BUCKET}"
+            -var="lock_table_name=${{ env.TF_LOCK_TABLE_NAME }}"
+          )
+
+          import_if_available() {
+            local address="$1"
+            local id="$2"
+            if terraform -chdir=${{ env.TF_DIR }} state show "$address" >/dev/null 2>&1; then
+              return 0
+            fi
+            terraform -chdir=${{ env.TF_DIR }} import -input=false "${tf_var_args[@]}" "$address" "$id" || true
+          }
+
+          if aws s3api head-bucket --bucket "${STATE_BUCKET}" >/dev/null 2>&1; then
+            import_if_available aws_s3_bucket.tf_state "${STATE_BUCKET}"
+            import_if_available aws_s3_bucket_versioning.tf_state "${STATE_BUCKET}"
+            import_if_available aws_s3_bucket_server_side_encryption_configuration.tf_state "${STATE_BUCKET}"
+            import_if_available aws_s3_bucket_public_access_block.tf_state "${STATE_BUCKET}"
+          fi
+
+          if aws dynamodb describe-table --table-name "${{ env.TF_LOCK_TABLE_NAME }}" >/dev/null 2>&1; then
+            import_if_available aws_dynamodb_table.tf_locks "${{ env.TF_LOCK_TABLE_NAME }}"
+          fi
+
       - name: Terraform Validate
         run: terraform -chdir=${{ env.TF_DIR }} validate
 
       - name: Terraform Plan
-        run: terraform -chdir=${{ env.TF_DIR }} plan -input=false -out=tfplan
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          STATE_BUCKET="${TF_STATE_BUCKET:-${{ env.TF_STATE_BUCKET_PREFIX }}-${ACCOUNT_ID}}"
+          terraform -chdir=${{ env.TF_DIR }} plan -input=false -out=tfplan \
+            -var="aws_region=${{ env.AWS_REGION }}" \
+            -var="state_bucket_name=${STATE_BUCKET}" \
+            -var="lock_table_name=${{ env.TF_LOCK_TABLE_NAME }}"
 
   apply:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
@@ -81,5 +114,42 @@ jobs:
       - name: Terraform Init
         run: terraform -chdir=${{ env.TF_DIR }} init -input=false
 
+      - name: Import Existing Bootstrap Resources
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          STATE_BUCKET="${TF_STATE_BUCKET:-${{ env.TF_STATE_BUCKET_PREFIX }}-${ACCOUNT_ID}}"
+          tf_var_args=(
+            -var="aws_region=${{ env.AWS_REGION }}"
+            -var="state_bucket_name=${STATE_BUCKET}"
+            -var="lock_table_name=${{ env.TF_LOCK_TABLE_NAME }}"
+          )
+
+          import_if_available() {
+            local address="$1"
+            local id="$2"
+            if terraform -chdir=${{ env.TF_DIR }} state show "$address" >/dev/null 2>&1; then
+              return 0
+            fi
+            terraform -chdir=${{ env.TF_DIR }} import -input=false "${tf_var_args[@]}" "$address" "$id" || true
+          }
+
+          if aws s3api head-bucket --bucket "${STATE_BUCKET}" >/dev/null 2>&1; then
+            import_if_available aws_s3_bucket.tf_state "${STATE_BUCKET}"
+            import_if_available aws_s3_bucket_versioning.tf_state "${STATE_BUCKET}"
+            import_if_available aws_s3_bucket_server_side_encryption_configuration.tf_state "${STATE_BUCKET}"
+            import_if_available aws_s3_bucket_public_access_block.tf_state "${STATE_BUCKET}"
+          fi
+
+          if aws dynamodb describe-table --table-name "${{ env.TF_LOCK_TABLE_NAME }}" >/dev/null 2>&1; then
+            import_if_available aws_dynamodb_table.tf_locks "${{ env.TF_LOCK_TABLE_NAME }}"
+          fi
+
       - name: Terraform Apply
-        run: terraform -chdir=${{ env.TF_DIR }} apply -input=false -auto-approve
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          STATE_BUCKET="${TF_STATE_BUCKET:-${{ env.TF_STATE_BUCKET_PREFIX }}-${ACCOUNT_ID}}"
+          terraform -chdir=${{ env.TF_DIR }} apply -input=false -auto-approve \
+            -var="aws_region=${{ env.AWS_REGION }}" \
+            -var="state_bucket_name=${STATE_BUCKET}" \
+            -var="lock_table_name=${{ env.TF_LOCK_TABLE_NAME }}"

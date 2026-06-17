@@ -16,6 +16,50 @@ variable "environment" {
   default     = "prod"
 }
 
+variable "postgres_mode" {
+  description = "PostgreSQL deployment mode: aws-managed creates RDS, in-cluster uses the Plane chart PostgreSQL, external expects PLANE_PGDB_REMOTE_URL."
+  type        = string
+  default     = "aws-managed"
+
+  validation {
+    condition     = contains(["aws-managed", "in-cluster", "external"], var.postgres_mode)
+    error_message = "postgres_mode must be aws-managed, in-cluster, or external."
+  }
+}
+
+variable "redis_mode" {
+  description = "Redis deployment mode: aws-managed creates ElastiCache, in-cluster uses the Plane chart Redis, external expects PLANE_REDIS_URL."
+  type        = string
+  default     = "aws-managed"
+
+  validation {
+    condition     = contains(["aws-managed", "in-cluster", "external"], var.redis_mode)
+    error_message = "redis_mode must be aws-managed, in-cluster, or external."
+  }
+}
+
+variable "rabbitmq_mode" {
+  description = "RabbitMQ deployment mode: aws-managed creates Amazon MQ, in-cluster uses the Plane chart RabbitMQ, external expects PLANE_RABBITMQ_URL."
+  type        = string
+  default     = "aws-managed"
+
+  validation {
+    condition     = contains(["aws-managed", "in-cluster", "external"], var.rabbitmq_mode)
+    error_message = "rabbitmq_mode must be aws-managed, in-cluster, or external."
+  }
+}
+
+variable "object_store_mode" {
+  description = "Object store mode: s3-managed creates an S3 bucket with IRSA, minio-in-cluster uses the Plane chart MinIO, external-s3 expects an existing S3-compatible bucket and credentials."
+  type        = string
+  default     = "s3-managed"
+
+  validation {
+    condition     = contains(["s3-managed", "minio-in-cluster", "external-s3"], var.object_store_mode)
+    error_message = "object_store_mode must be s3-managed, minio-in-cluster, or external-s3."
+  }
+}
+
 variable "vpc_cidr" {
   description = "CIDR block for the VPC"
   type        = string
@@ -79,9 +123,9 @@ variable "eks_bootstrap_cluster_creator_admin" {
 }
 
 variable "eks_cluster_admin_principal_arns" {
-  description = "IAM principal ARNs that should have cluster-admin access"
+  description = "IAM principal ARNs that should have cluster-admin access. CI sets this to the GitHub OIDC role ARN."
   type        = list(string)
-  default     = ["arn:aws:iam::211125458668:role/github-actions-terraform-prod"]
+  default     = []
 }
 
 variable "eks_node_group_name" {
@@ -243,16 +287,22 @@ variable "rds_skip_final_snapshot" {
   default     = true
 }
 
+variable "rds_performance_insights_enabled" {
+  description = "Whether RDS Performance Insights is enabled"
+  type        = bool
+  default     = false
+}
+
 variable "rds_allowed_cidr_blocks" {
-  description = "CIDR blocks allowed to reach PostgreSQL on port 5432"
+  description = "CIDR blocks allowed to reach PostgreSQL on port 5432. Empty means the VPC CIDR."
   type        = list(string)
-  default     = ["172.26.0.0/16"]
+  default     = []
 }
 
 variable "rabbitmq_allowed_cidr_blocks" {
-  description = "CIDR blocks allowed to reach Amazon MQ RabbitMQ on port 5671"
+  description = "CIDR blocks allowed to reach Amazon MQ RabbitMQ on port 5671. Empty means the VPC CIDR."
   type        = list(string)
-  default     = ["172.26.0.0/16"]
+  default     = []
 }
 
 variable "rabbitmq_engine_version" {
@@ -300,9 +350,9 @@ variable "rabbitmq_password" {
 }
 
 variable "redis_allowed_cidr_blocks" {
-  description = "CIDR blocks allowed to reach Redis on port 6379"
+  description = "CIDR blocks allowed to reach Redis on port 6379. Empty means the VPC CIDR."
   type        = list(string)
-  default     = ["172.26.0.0/16"]
+  default     = []
 }
 
 variable "redis_node_type" {
@@ -346,13 +396,13 @@ variable "redis_auth_token" {
 variable "plane_namespace" {
   description = "Kubernetes namespace where Plane is deployed"
   type        = string
-  default     = "plane-dev"
+  default     = "plane"
 }
 
 variable "plane_service_account_name" {
   description = "Plane Kubernetes service account name used by workloads"
   type        = string
-  default     = "plane-dev-srv-account"
+  default     = "plane-srv-account"
 }
 
 variable "plane_docstore_bucket_name" {

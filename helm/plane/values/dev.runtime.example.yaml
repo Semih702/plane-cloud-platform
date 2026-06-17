@@ -1,4 +1,5 @@
 # Example local runtime overrides for manual helm upgrades.
+# This example uses external PostgreSQL, Redis, RabbitMQ, and S3-compatible storage.
 plane-ce:
   postgres:
     local_setup: false
@@ -7,6 +8,15 @@ plane-ce:
   rabbitmq:
     local_setup: false
     external_rabbitmq_url: "amqps://<rabbit_user>:<rabbit_password>@<rabbit_host>:5671/"
+  minio:
+    local_setup: false
   env:
     pgdb_remote_url: "postgresql://<db_user>:<db_password>@<db_host>:5432/<db_name>"
     remote_redis_url: "rediss://:<redis_auth_token>@<redis_host>:6379/0"
+    docstore_bucket: "<docstore-bucket>"
+    aws_region: "<region>"
+    aws_access_key: "<access-key-or-empty-when-using-irsa>"
+    aws_secret_access_key: "<secret-key-or-empty-when-using-irsa>"
+    aws_s3_endpoint_url: "<optional-s3-compatible-endpoint>"
+    secret_key: "<generate-a-stable-random-secret>"
+    live_server_secret_key: "<generate-a-stable-random-secret>"
