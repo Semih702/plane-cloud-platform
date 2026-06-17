@@ -161,7 +161,9 @@ variable "eks_bootstrap_cluster_creator_admin" {
 variable "eks_cluster_admin_principal_arns" {
   description = "IAM principal ARNs that should have cluster-admin access. CI sets this to the GitHub OIDC role ARN."
   type        = list(string)
-  default     = []
+  # The cluster creator already receives admin access through
+  # eks_bootstrap_cluster_creator_admin. Add only extra admin principals here.
+  default = []
 }
 
 variable "eks_node_group_name" {
@@ -447,3 +449,8 @@ variable "plane_docstore_bucket_name" {
   default     = ""
 }
 
+variable "plane_docstore_cors_allowed_origins" {
+  description = "Allowed browser origins for Plane direct S3 uploads. Replace the bootstrap wildcard with explicit app domains once DNS is stable."
+  type        = list(string)
+  default     = ["*"]
+}

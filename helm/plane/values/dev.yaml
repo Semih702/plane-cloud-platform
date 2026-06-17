@@ -51,7 +51,7 @@ plane-ce:
     # Set by CI from Terraform S3 output.
     docstore_bucket: ""
     aws_region: "eu-west-1"
-    aws_s3_endpoint_url: ""
+    aws_s3_endpoint_url: "https://s3.eu-west-1.amazonaws.com"
     # Set by CI from Terraform-managed AWS Secrets Manager value.
     secret_key: ""
     live_server_secret_key: ""

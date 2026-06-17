@@ -629,13 +629,13 @@ jobs:
           if [ "${OBJECT_STORE_MODE}" = "s3-managed" ]; then
             DOCSTORE_BUCKET="${{ steps.tf_outputs.outputs.plane_docstore_bucket_name }}"
             require_nonempty "plane_docstore_bucket_name" "${DOCSTORE_BUCKET}"
-            AWS_S3_ENDPOINT_URL_VALUE="${PLANE_S3_ENDPOINT_URL:-}"
+            AWS_S3_ENDPOINT_URL_VALUE="${PLANE_S3_ENDPOINT_URL:-https://s3.${{ env.AWS_REGION }}.amazonaws.com}"
           elif [ "${OBJECT_STORE_MODE}" = "external-s3" ]; then
             DOCSTORE_BUCKET="${PLANE_DOCSTORE_BUCKET}"
             AWS_REGION_VALUE="${PLANE_EXTERNAL_S3_REGION}"
             AWS_ACCESS_KEY_ID_VALUE="${PLANE_EXTERNAL_S3_ACCESS_KEY_ID}"
             AWS_SECRET_ACCESS_KEY_VALUE="${PLANE_EXTERNAL_S3_SECRET_ACCESS_KEY}"
-            AWS_S3_ENDPOINT_URL_VALUE="${PLANE_S3_ENDPOINT_URL:-}"
+            AWS_S3_ENDPOINT_URL_VALUE="${PLANE_S3_ENDPOINT_URL:-https://s3.${PLANE_EXTERNAL_S3_REGION}.amazonaws.com}"
             require_nonempty "PLANE_DOCSTORE_BUCKET" "${DOCSTORE_BUCKET}"
             require_nonempty "PLANE_EXTERNAL_S3_ACCESS_KEY_ID" "${AWS_ACCESS_KEY_ID_VALUE}"
             require_nonempty "PLANE_EXTERNAL_S3_SECRET_ACCESS_KEY" "${AWS_SECRET_ACCESS_KEY_VALUE}"
