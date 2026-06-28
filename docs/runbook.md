@@ -10,11 +10,12 @@
    ```
 
 2. Add the printed ARN as the GitHub secret `AWS_GITHUB_OIDC_ROLE_ARN`.
-3. Optional: if deploying into an existing EKS cluster, set the variables in [existing-cluster.md](existing-cluster.md) before planning.
-4. Run `Terraform Bootstrap` with `action=apply` and approve the `prod` environment prompt when GitHub asks.
-5. Run `Terraform Prod` with `action=plan`.
-6. Review the plan.
-7. Run `Terraform Prod` with `action=apply` and approve the `prod` environment prompt.
+3. Optional: if you want local `kubectl` access after deploy, set `EKS_CLUSTER_ADMIN_PRINCIPAL_ARNS_JSON` to a JSON array containing your administrator IAM user or role ARN.
+4. Optional: if deploying into an existing EKS cluster, set the variables in [existing-cluster.md](existing-cluster.md) before planning.
+5. Run `Terraform Bootstrap` with `action=apply` and approve the `prod` environment prompt when GitHub asks.
+6. Run `Terraform Prod` with `action=plan`.
+7. Review the plan.
+8. Run `Terraform Prod` with `action=apply` and approve the `prod` environment prompt.
 
 ## Find The Plane URL
 
@@ -26,6 +27,13 @@ kubectl get ingress plane-ingress -n plane
 Use the ALB hostname unless `PLANE_APP_HOST` points to it through DNS.
 
 For existing-cluster mode, replace `plane-prod-eks` with `EXISTING_EKS_CLUSTER_NAME`.
+If your local IAM principal was not added to `EKS_CLUSTER_ADMIN_PRINCIPAL_ARNS_JSON`, get the ALB DNS name from AWS instead:
+
+```bash
+aws elbv2 describe-load-balancers --region eu-west-1 \
+  --query "LoadBalancers[?contains(LoadBalancerName, 'k8s-plane')].DNSName" \
+  --output text
+```
 
 ## Update
 

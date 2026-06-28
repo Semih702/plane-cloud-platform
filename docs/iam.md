@@ -23,6 +23,8 @@ The OIDC trust policy should be scoped to one repository, branch, and the protec
 
 The helper can also allow `pull_request`, but official upstream deployments should avoid AWS-authenticated work on public fork pull requests. This repository's `CI` workflow is secret-free; deployment workflows are manual.
 
+The GitHub OIDC role creates the dedicated EKS cluster, so it receives creator admin access. Add local workstation administrators separately through `EKS_CLUSTER_ADMIN_PRINCIPAL_ARNS_JSON` when they need direct `kubectl` access.
+
 ## State And Secrets
 
 Terraform-generated service credentials are stored in AWS Secrets Manager, then injected into Helm at deploy time. Terraform state may still contain sensitive generated values.

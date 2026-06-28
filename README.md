@@ -60,6 +60,7 @@ The defaults work for the standard AWS-managed path.
 - `K8S_NAMESPACE`: default `plane`
 - `PLANE_APP_HOST`: optional custom host; when empty, the ALB DNS name is usable after deploy
 - `CREATE_EKS_CLUSTER`: default `true`; set `false` to deploy into an existing EKS cluster
+- `EKS_CLUSTER_ADMIN_PRINCIPAL_ARNS_JSON`: optional JSON array of extra IAM principal ARNs that should receive EKS cluster-admin access for local `kubectl`
 - `INGRESS_CLASS_NAME`: default `alb`
 - `INGRESS_ENABLED`: default `true`
 - `STORAGE_CLASS_NAME`: default `gp3-csi` when this kit creates the StorageClass
@@ -105,6 +106,8 @@ chmod +x scripts/bootstrap-oidc.sh
 Add the printed role ARN as `AWS_GITHUB_OIDC_ROLE_ARN`.
 The helper trusts both the `main` branch and the `prod` GitHub Environment because apply jobs run through that protected environment.
 
+Optional: set `EKS_CLUSTER_ADMIN_PRINCIPAL_ARNS_JSON` to a JSON array with your local administrator IAM user or role ARN if you want to use `kubectl` from your workstation after deploy.
+
 Then run these GitHub Actions manually:
 
 1. `Terraform Bootstrap` with `action=apply`
@@ -121,6 +124,13 @@ kubectl get ingress plane-ingress -n plane
 ```
 
 Open the ALB hostname unless you configured `PLANE_APP_HOST`.
+If your local IAM principal was not added through `EKS_CLUSTER_ADMIN_PRINCIPAL_ARNS_JSON`, use the AWS Load Balancer console or CLI to find the ALB DNS name instead:
+
+```bash
+aws elbv2 describe-load-balancers --region eu-west-1 \
+  --query "LoadBalancers[?contains(LoadBalancerName, 'k8s-plane')].DNSName" \
+  --output text
+```
 
 ## Security Notes
 
