@@ -1,5 +1,9 @@
 # Proposal: Plane AWS Deployment Kit
 
+## Background
+
+This project started as a cloud computing course project exploring production-grade AWS deployments. It evolved into a complete, fork-friendly deployment kit for Plane Community Edition after we found that the existing self-hosting options did not cover an end-to-end Terraform + Helm + GitHub Actions workflow for AWS.
+
 ## Summary
 
 We propose contributing this repository as a fork-and-deploy AWS deployment kit for Plane Community Edition.
@@ -114,10 +118,16 @@ The remaining validation needed before publishing as an official Plane-maintaine
 
 Hi Plane team,
 
-I built a fork-and-deploy AWS deployment kit for Plane CE using GitHub Actions, Terraform, and Helm. The goal is to let one operator deploy Plane into their own AWS account with GitHub OIDC, a bootstrap workflow, and a manual production workflow.
+I built a fork-and-deploy AWS deployment kit for Plane CE using GitHub Actions, Terraform, and Helm. This started as a cloud computing course project and grew into a complete deployment solution after I noticed the gap between the existing self-hosting docs and a fully automated AWS path.
 
-The default profile provisions EKS, RDS PostgreSQL, Amazon MQ RabbitMQ, ElastiCache Redis, S3, IRSA roles, ALB ingress, and generated secrets. It also supports configurable service modes, so PostgreSQL, Redis, RabbitMQ, and object storage can be AWS-managed, in-cluster, or external.
+The kit lets one operator deploy Plane into their own AWS account with a single GitHub secret (OIDC role ARN), a bootstrap workflow, and a manual production workflow. No long-lived AWS access keys are needed.
 
-I would like to propose this as a Plane-maintained or Plane-linked deployment kit for AWS self-hosting. The repository is structured so PR CI is secret-free, deploy workflows are manual, and IAM/service-mode/runbook documentation is included.
+The default profile provisions EKS, RDS PostgreSQL, Amazon MQ RabbitMQ, ElastiCache Redis, S3, IRSA roles, ALB ingress, and generated secrets. It also supports configurable service modes, so PostgreSQL, Redis, RabbitMQ, and object storage can be AWS-managed, in-cluster, or external. Organizations with an existing EKS cluster can deploy Plane into a namespace without creating a second cluster.
 
-I would appreciate your review on whether this fits Plane's self-hosting direction and what changes would be required for it to become an official or community-supported deployment option.
+I am aware of the `commercial-deployments` repository. This kit takes a different approach: it uses Helm (aligned with the official `helm-charts` repo), includes GitHub Actions CI/CD for fork-and-deploy, targets the Community Edition, and ships with full documentation for IAM, service modes, existing-cluster mode, and a runbook.
+
+I would like to propose this as a Plane-maintained or community-linked deployment kit for AWS self-hosting. I am happy to maintain it long-term and adapt it to Plane's standards.
+
+Repository: https://github.com/Semih702/plane-cloud-platform
+
+I would appreciate your feedback on whether this fits Plane's self-hosting direction and what form adoption could take — whether as a link from the self-hosting docs, a community-maintained repo under the Plane organization, or a reference implementation.
