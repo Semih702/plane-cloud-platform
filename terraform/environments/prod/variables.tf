@@ -350,7 +350,7 @@ variable "rabbitmq_engine_version" {
 variable "rabbitmq_host_instance_type" {
   description = "Amazon MQ broker instance type"
   type        = string
-  default     = "mq.t3.micro"
+  default     = "mq.m7g.medium"
 }
 
 variable "rabbitmq_deployment_mode" {

@@ -44,7 +44,7 @@ env:
   TF_VAR_object_store_mode: ${{ vars.OBJECT_STORE_MODE || 's3-managed' }}
   TF_VAR_plane_namespace: ${{ vars.K8S_NAMESPACE || 'plane' }}
   TF_VAR_plane_service_account_name: ${{ format('{0}-srv-account', vars.HELM_RELEASE_NAME || 'plane') }}
-  TF_VAR_eks_cluster_admin_principal_arns: '["${{ secrets.AWS_GITHUB_OIDC_ROLE_ARN }}"]'
+  TF_VAR_eks_cluster_admin_principal_arns: ${{ vars.EKS_CLUSTER_ADMIN_PRINCIPAL_ARNS_JSON || '[]' }}
   POSTGRES_MODE: ${{ vars.POSTGRES_MODE || 'aws-managed' }}
   REDIS_MODE: ${{ vars.REDIS_MODE || 'aws-managed' }}
   RABBITMQ_MODE: ${{ vars.RABBITMQ_MODE || 'aws-managed' }}
