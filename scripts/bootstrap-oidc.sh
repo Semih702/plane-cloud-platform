@@ -11,6 +11,7 @@ Required:
 
 Options:
   --branch               Branch to allow in trust policy (default: main)
+  --environment          GitHub Environment allowed in trust policy (default: prod)
   --role-name            IAM role name (default: github-actions-terraform-prod)
   --policy-name          Inline policy name (default: terraform-prod-policy)
   --policy-file          Policy JSON file path (default: .github/iam/terraform-prod-policy.json)
@@ -23,6 +24,7 @@ EOF
 
 REPO=""
 BRANCH="main"
+ENVIRONMENT="prod"
 ROLE_NAME="github-actions-terraform-prod"
 POLICY_NAME="terraform-prod-policy"
 POLICY_FILE=".github/iam/terraform-prod-policy.json"
@@ -40,6 +42,8 @@ while [[ $# -gt 0 ]]; do
       REPO="${2:-}"; shift 2 ;;
     --branch)
       BRANCH="${2:-}"; shift 2 ;;
+    --environment)
+      ENVIRONMENT="${2:-}"; shift 2 ;;
     --role-name)
       ROLE_NAME="${2:-}"; shift 2 ;;
     --policy-name)
@@ -107,19 +111,26 @@ TRUST_FILE="$(mktemp)"
 cleanup() { rm -f "$TRUST_FILE"; }
 trap cleanup EXIT
 
+SUBJECTS=("\"repo:${REPO}:ref:refs/heads/${BRANCH}\"")
+if [[ -n "$ENVIRONMENT" ]]; then
+  SUBJECTS+=("\"repo:${REPO}:environment:${ENVIRONMENT}\"")
+fi
 if [[ "$ALLOW_PULL_REQUEST" == "true" ]]; then
-  SUB_BLOCK=$(cat <<EOF
-[
-  "repo:${REPO}:ref:refs/heads/${BRANCH}",
-  "repo:${REPO}:pull_request"
-]
-EOF
-)
+  SUBJECTS+=("\"repo:${REPO}:pull_request\"")
+fi
+
+if [[ "${#SUBJECTS[@]}" -eq 1 ]]; then
+  SUB_BLOCK="${SUBJECTS[0]}"
 else
-  SUB_BLOCK=$(cat <<EOF
-"repo:${REPO}:ref:refs/heads/${BRANCH}"
-EOF
-)
+  SUB_BLOCK=$'[\n'
+  for i in "${!SUBJECTS[@]}"; do
+    comma=","
+    if [[ "$i" -eq "$((${#SUBJECTS[@]} - 1))" ]]; then
+      comma=""
+    fi
+    SUB_BLOCK+="  ${SUBJECTS[$i]}${comma}"$'\n'
+  done
+  SUB_BLOCK+=']'
 fi
 
 cat > "$TRUST_FILE" <<EOF

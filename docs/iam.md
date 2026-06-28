@@ -16,9 +16,10 @@ Several AWS APIs require `Resource: "*"` for create, describe, tagging, service-
 
 ## Trust Policy Scope
 
-The OIDC trust policy should be scoped to one repository and branch:
+The OIDC trust policy should be scoped to one repository, branch, and the protected GitHub Environment used by apply jobs:
 
 - `repo:<owner>/<repo>:ref:refs/heads/main`
+- `repo:<owner>/<repo>:environment:prod`
 
 The helper can also allow `pull_request`, but official upstream deployments should avoid AWS-authenticated work on public fork pull requests. This repository's `CI` workflow is secret-free; deployment workflows are manual.
 

@@ -103,12 +103,15 @@ chmod +x scripts/bootstrap-oidc.sh
 ```
 
 Add the printed role ARN as `AWS_GITHUB_OIDC_ROLE_ARN`.
+The helper trusts both the `main` branch and the `prod` GitHub Environment because apply jobs run through that protected environment.
 
 Then run these GitHub Actions manually:
 
 1. `Terraform Bootstrap` with `action=apply`
 2. `Terraform Prod` with `action=plan`
 3. `Terraform Prod` with `action=apply`
+
+Approve the `prod` deployment prompt when GitHub pauses an apply job for environment review.
 
 After deploy:
 

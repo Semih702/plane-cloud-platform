@@ -14,7 +14,7 @@ Audience:
 
 ## 2. Create IAM role for GitHub Actions
 
-Create a role trusted by GitHub OIDC and allow this repo/branch only.
+Create a role trusted by GitHub OIDC and allow this repo/branch. The apply jobs use the GitHub `prod` environment, so the trust policy must also allow the environment subject.
 
 Example trust policy (replace placeholders):
 
@@ -33,7 +33,10 @@ Example trust policy (replace placeholders):
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
         },
         "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:<GITHUB_ORG_OR_USER>/<REPO_NAME>:ref:refs/heads/main"
+          "token.actions.githubusercontent.com:sub": [
+            "repo:<GITHUB_ORG_OR_USER>/<REPO_NAME>:ref:refs/heads/main",
+            "repo:<GITHUB_ORG_OR_USER>/<REPO_NAME>:environment:prod"
+          ]
         }
       }
     }
@@ -53,6 +56,8 @@ Optional helper script (one-time bootstrap):
 chmod +x scripts/bootstrap-oidc.sh
 ./scripts/bootstrap-oidc.sh --repo <OWNER/REPO> --branch main --profile personal
 ```
+
+The helper includes the `prod` environment subject by default. Use `--environment <name>` if the workflow environment changes.
 
 ## 3. Configure GitHub secrets
 
