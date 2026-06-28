@@ -765,8 +765,7 @@ jobs:
             --values "${{ env.HELM_VALUES_FILE }}" \
             --values "${{ steps.plane_runtime_values.outputs.runtime_values_file }}" \
             "${helm_set_args[@]}" \
-            --rollback-on-failure \
-            --wait \
+            --atomic \
             --wait-for-jobs \
             --timeout 20m
 

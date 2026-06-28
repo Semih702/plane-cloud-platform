@@ -175,9 +175,7 @@ variable "eks_node_group_name" {
 variable "eks_node_instance_types" {
   description = "Instance types for EKS managed node group"
   type        = list(string)
-  # Budget-compatible option when t3.medium is not available.
-  # Preferred after free-tier: ["t3.medium"]
-  default = ["t3.small"]
+  default     = ["t3.medium"]
 }
 
 variable "eks_node_capacity_type" {
