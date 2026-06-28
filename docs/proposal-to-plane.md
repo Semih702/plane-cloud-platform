@@ -72,7 +72,7 @@ The repository separates validation from deployment:
 - `Terraform Bootstrap` is manual and creates/imports the remote state backend.
 - `Terraform Prod` is manual and runs `plan` or `apply`.
 
-The default OIDC trust policy is branch-scoped and does not trust public pull request subjects. Production apply uses a GitHub Environment named `prod`, so maintainers can require reviewer approval.
+The default OIDC trust policy is branch-scoped and does not trust public pull request subjects. Production deploys remain manual; pushes and pull requests never apply infrastructure.
 
 Terraform state may contain generated secrets, so the backend is private, encrypted, versioned, and intended to be accessed only by trusted administrators and the GitHub deployment role.
 

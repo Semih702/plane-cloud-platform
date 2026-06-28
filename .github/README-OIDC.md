@@ -14,7 +14,7 @@ Audience:
 
 ## 2. Create IAM role for GitHub Actions
 
-Create a role trusted by GitHub OIDC and allow this repo/branch. The apply jobs use the GitHub `prod` environment, so the trust policy must also allow the environment subject.
+Create a role trusted by GitHub OIDC and allow this repo/branch only.
 
 Example trust policy (replace placeholders):
 
@@ -33,10 +33,7 @@ Example trust policy (replace placeholders):
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
         },
         "StringLike": {
-          "token.actions.githubusercontent.com:sub": [
-            "repo:<GITHUB_ORG_OR_USER>/<REPO_NAME>:ref:refs/heads/main",
-            "repo:<GITHUB_ORG_OR_USER>/<REPO_NAME>:environment:prod"
-          ]
+          "token.actions.githubusercontent.com:sub": "repo:<GITHUB_ORG_OR_USER>/<REPO_NAME>:ref:refs/heads/main"
         }
       }
     }
@@ -50,14 +47,7 @@ You can start from:
 
 - `.github/iam/terraform-prod-policy.json`
 
-Optional helper script (one-time bootstrap):
-
-```bash
-chmod +x scripts/bootstrap-oidc.sh
-./scripts/bootstrap-oidc.sh --repo <OWNER/REPO> --branch main --profile personal
-```
-
-The helper includes the `prod` environment subject by default. Use `--environment <name>` if the workflow environment changes.
+Attach `.github/iam/terraform-prod-policy.json` to the role as an inline policy.
 
 ## 3. Configure GitHub secrets
 
@@ -70,11 +60,9 @@ Optional repository variables include `AWS_REGION`, `TF_STATE_BUCKET`, `TF_STATE
 
 External service modes may require additional secrets. See `docs/service-modes.md`.
 
-## 4. Protect production apply
+## 4. Production apply
 
-Create a GitHub Environment named `prod` and require reviewer approval.
-
-The workflow already routes apply job to this environment.
+The deploy workflows are manual. Running `Terraform Prod` with `action=apply` applies infrastructure without an additional repository-environment review gate.
 
 ## 5. Workflow behavior
 

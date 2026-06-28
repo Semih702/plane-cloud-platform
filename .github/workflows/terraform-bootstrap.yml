@@ -95,7 +95,6 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
     needs: plan
     runs-on: ubuntu-latest
-    environment: prod
     steps:
       - name: Checkout
         uses: actions/checkout@v4

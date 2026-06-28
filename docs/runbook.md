@@ -4,18 +4,17 @@
 
 1. Create the GitHub OIDC role:
 
-   ```bash
-   chmod +x scripts/bootstrap-oidc.sh
-   ./scripts/bootstrap-oidc.sh --repo <OWNER>/<REPO> --branch main --profile <AWS_PROFILE>
-   ```
+   - Create or reuse the GitHub OIDC provider for `https://token.actions.githubusercontent.com`.
+   - Create an IAM role whose trust policy allows `repo:<OWNER>/<REPO>:ref:refs/heads/main`.
+   - Attach `.github/iam/terraform-prod-policy.json` as an inline policy.
 
 2. Add the printed ARN as the GitHub secret `AWS_GITHUB_OIDC_ROLE_ARN`.
 3. Optional: if you want local `kubectl` access after deploy, set `EKS_CLUSTER_ADMIN_PRINCIPAL_ARNS_JSON` to a JSON array containing your administrator IAM user or role ARN.
 4. Optional: if deploying into an existing EKS cluster, set the variables in [existing-cluster.md](existing-cluster.md) before planning.
-5. Run `Terraform Bootstrap` with `action=apply` and approve the `prod` environment prompt when GitHub asks.
+5. Run `Terraform Bootstrap` with `action=apply`.
 6. Run `Terraform Prod` with `action=plan`.
 7. Review the plan.
-8. Run `Terraform Prod` with `action=apply` and approve the `prod` environment prompt.
+8. Run `Terraform Prod` with `action=apply`.
 
 ## Find The Plane URL
 
@@ -43,8 +42,8 @@ Changing service modes can add or remove managed resources. Review plan output c
 
 ## Common Failures
 
-- Missing `AWS_GITHUB_OIDC_ROLE_ARN`: configure the repository secret after running the OIDC helper.
-- `Not authorized to perform sts:AssumeRoleWithWebIdentity` in an apply job: make sure the OIDC trust policy allows `repo:<owner>/<repo>:environment:prod` as well as the `main` branch subject.
+- Missing `AWS_GITHUB_OIDC_ROLE_ARN`: configure the repository secret with the IAM role ARN after creating the GitHub OIDC role.
+- `Not authorized to perform sts:AssumeRoleWithWebIdentity`: make sure the OIDC trust policy allows `repo:<owner>/<repo>:ref:refs/heads/main` and that you ran the workflow from `main`.
 - Backend bucket missing: run `Terraform Bootstrap` with `action=apply`.
 - EKS API not reachable from GitHub-hosted runners: keep public endpoint enabled or run Actions on a network that can reach the private endpoint.
 - Existing cluster variables missing: set `EXISTING_EKS_CLUSTER_NAME`, and set the existing VPC/subnet variables if any data service remains AWS-managed.

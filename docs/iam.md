@@ -1,6 +1,6 @@
 # IAM Model
 
-GitHub Actions uses OpenID Connect to assume one short-lived AWS IAM role. The role is created by `scripts/bootstrap-oidc.sh` and receives `.github/iam/terraform-prod-policy.json` as an inline policy.
+GitHub Actions uses OpenID Connect to assume one short-lived AWS IAM role. Create the role for your fork and attach `.github/iam/terraform-prod-policy.json` as an inline policy.
 
 ## Why The Policy Is Broad
 
@@ -16,12 +16,11 @@ Several AWS APIs require `Resource: "*"` for create, describe, tagging, service-
 
 ## Trust Policy Scope
 
-The OIDC trust policy should be scoped to one repository, branch, and the protected GitHub Environment used by apply jobs:
+The OIDC trust policy should be scoped to one repository and branch:
 
 - `repo:<owner>/<repo>:ref:refs/heads/main`
-- `repo:<owner>/<repo>:environment:prod`
 
-The helper can also allow `pull_request`, but official upstream deployments should avoid AWS-authenticated work on public fork pull requests. This repository's `CI` workflow is secret-free; deployment workflows are manual.
+Official deployments should avoid AWS-authenticated work on public fork pull requests. This repository's `CI` workflow is secret-free; deployment workflows are manual.
 
 The GitHub OIDC role creates the dedicated EKS cluster, so it receives creator admin access. Add local workstation administrators separately through `EKS_CLUSTER_ADMIN_PRINCIPAL_ARNS_JSON` when they need direct `kubectl` access.
 
