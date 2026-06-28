@@ -2,8 +2,6 @@
 # local kubeconfig
 kubeconfig-plane
 
-# local helper scripts
-scripts/
 
 # Terraform local state and cache
 **/.terraform/*
