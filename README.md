@@ -128,6 +128,17 @@ aws elbv2 describe-load-balancers --region eu-west-1 \
   --output text
 ```
 
+## Sizing Defaults
+
+The default instance sizes are suitable for a low-traffic first deploy:
+
+- EKS node group: `t3.medium` (3 nodes)
+- RDS PostgreSQL: `db.t3.micro`
+- ElastiCache Redis: `cache.t3.micro`
+- Amazon MQ RabbitMQ: `mq.m7g.medium`
+
+Review and adjust these through the corresponding Terraform variables before deploying for production workloads. See `terraform/environments/prod/variables.tf` for the full list.
+
 ## Security Notes
 
 - GitHub uses OIDC to assume a short-lived AWS role.
