@@ -320,6 +320,49 @@ resource "aws_iam_role_policy_attachment" "plane_docstore_s3" {
   policy_arn = aws_iam_policy.plane_docstore_s3[0].arn
 }
 
+resource "aws_iam_user" "plane_s3_credentials" {
+  count = local.use_managed_s3 ? 1 : 0
+
+  name = "${var.project_name}-${var.environment}-plane-s3-credentials"
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-plane-s3-credentials"
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "terraform"
+    Purpose     = "plane-docstore-presigned-urls"
+  }
+}
+
+resource "aws_iam_user_policy" "plane_s3_credentials" {
+  count = local.use_managed_s3 ? 1 : 0
+
+  name = "plane-docstore-access"
+  user = aws_iam_user.plane_s3_credentials[0].name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket", "s3:GetBucketLocation"]
+        Resource = aws_s3_bucket.plane_docstore[0].arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = "${aws_s3_bucket.plane_docstore[0].arn}/*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_access_key" "plane_s3_credentials" {
+  count = local.use_managed_s3 ? 1 : 0
+
+  user = aws_iam_user.plane_s3_credentials[0].name
+}
+
 resource "random_password" "plane_secret_key" {
   length  = 64
   special = false
@@ -379,11 +422,17 @@ resource "aws_secretsmanager_secret" "plane_app" {
 
 resource "aws_secretsmanager_secret_version" "plane_app" {
   secret_id = aws_secretsmanager_secret.plane_app.id
-  secret_string = jsonencode({
-    secret_key             = random_password.plane_secret_key.result
-    live_server_secret_key = random_password.plane_live_server_secret_key.result
-    postgres_password      = random_password.plane_local_postgres_password.result
-    rabbitmq_password      = random_password.plane_local_rabbitmq_password.result
-    minio_root_password    = random_password.plane_local_minio_password.result
-  })
+  secret_string = jsonencode(merge(
+    {
+      secret_key             = random_password.plane_secret_key.result
+      live_server_secret_key = random_password.plane_live_server_secret_key.result
+      postgres_password      = random_password.plane_local_postgres_password.result
+      rabbitmq_password      = random_password.plane_local_rabbitmq_password.result
+      minio_root_password    = random_password.plane_local_minio_password.result
+    },
+    local.use_managed_s3 ? {
+      s3_access_key_id     = aws_iam_access_key.plane_s3_credentials[0].id
+      s3_secret_access_key = aws_iam_access_key.plane_s3_credentials[0].secret
+    } : {}
+  ))
 }

@@ -629,6 +629,10 @@ jobs:
             DOCSTORE_BUCKET="${{ steps.tf_outputs.outputs.plane_docstore_bucket_name }}"
             require_nonempty "plane_docstore_bucket_name" "${DOCSTORE_BUCKET}"
             AWS_S3_ENDPOINT_URL_VALUE="${PLANE_S3_ENDPOINT_URL:-https://s3.${{ env.AWS_REGION }}.amazonaws.com}"
+            AWS_ACCESS_KEY_ID_VALUE="$(echo "${PLANE_APP_SECRET_JSON}" | jq -r '.s3_access_key_id // empty')"
+            AWS_SECRET_ACCESS_KEY_VALUE="$(echo "${PLANE_APP_SECRET_JSON}" | jq -r '.s3_secret_access_key // empty')"
+            mask_if_set "${AWS_ACCESS_KEY_ID_VALUE}"
+            mask_if_set "${AWS_SECRET_ACCESS_KEY_VALUE}"
           elif [ "${OBJECT_STORE_MODE}" = "external-s3" ]; then
             DOCSTORE_BUCKET="${PLANE_DOCSTORE_BUCKET}"
             AWS_REGION_VALUE="${PLANE_EXTERNAL_S3_REGION}"
@@ -785,4 +789,49 @@ jobs:
           for deploy in "${{ env.HELM_RELEASE_NAME }}-api-wl" "${{ env.HELM_RELEASE_NAME }}-live-wl" "${{ env.HELM_RELEASE_NAME }}-worker-wl" "${{ env.HELM_RELEASE_NAME }}-beat-worker-wl" "${{ env.HELM_RELEASE_NAME }}-web-wl" "${{ env.HELM_RELEASE_NAME }}-admin-wl" "${{ env.HELM_RELEASE_NAME }}-space-wl"; do
             kubectl rollout status "deployment/${deploy}" -n "${{ env.K8S_NAMESPACE }}" --timeout=5m || true
           done
+
+      - name: Resolve and Set WEB_URL
+        run: |
+          set -euo pipefail
+
+          if [ -n "${{ env.PLANE_APP_HOST }}" ]; then
+            WEB_URL="http://${{ env.PLANE_APP_HOST }}"
+          else
+            echo "No PLANE_APP_HOST set. Resolving ALB DNS from ingress..."
+            ALB_DNS=""
+            for i in $(seq 1 30); do
+              ALB_DNS="$(kubectl get ingress "${{ env.HELM_RELEASE_NAME }}-ingress" \
+                -n "${{ env.K8S_NAMESPACE }}" \
+                -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+              if [ -n "${ALB_DNS}" ]; then
+                break
+              fi
+              echo "Waiting for ALB DNS... (attempt ${i}/30)"
+              sleep 10
+            done
+            if [ -z "${ALB_DNS}" ]; then
+              echo "::warning::Could not resolve ALB DNS for WEB_URL. Sign-in may fail until WEB_URL is set manually."
+              exit 0
+            fi
+            WEB_URL="http://${ALB_DNS}"
+          fi
+
+          echo "Setting WEB_URL=${WEB_URL}"
+
+          CONFIGMAP_NAME="${{ env.HELM_RELEASE_NAME }}-app-vars"
+          CURRENT_WEB_URL="$(kubectl get configmap "${CONFIGMAP_NAME}" \
+            -n "${{ env.K8S_NAMESPACE }}" \
+            -o jsonpath='{.data.WEB_URL}' 2>/dev/null || true)"
+
+          if [ "${CURRENT_WEB_URL}" = "${WEB_URL}" ]; then
+            echo "WEB_URL is already set correctly."
+          else
+            kubectl patch configmap "${CONFIGMAP_NAME}" \
+              -n "${{ env.K8S_NAMESPACE }}" \
+              --type merge \
+              -p "{\"data\":{\"WEB_URL\":\"${WEB_URL}\"}}"
+            echo "Restarting API to pick up WEB_URL..."
+            kubectl rollout restart "deployment/${{ env.HELM_RELEASE_NAME }}-api-wl" -n "${{ env.K8S_NAMESPACE }}"
+            kubectl rollout status "deployment/${{ env.HELM_RELEASE_NAME }}-api-wl" -n "${{ env.K8S_NAMESPACE }}" --timeout=5m
+          fi
 
